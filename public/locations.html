@@ -1,17 +1,17 @@
 <!DOCTYPE html>
 <html>
-  <head><title>Locations</title></head>
+  <head><title>Endereços</title></head>
   <body>
-    <h1>Locations</h1>
+    <h1>Endereços</h1>
     <nav><a href="index.html">Início</a></nav>
     <form id="locForm">
-      <input type="number" id="superId" placeholder="Supermarket ID" required />
-      <input type="text" id="address" placeholder="Address" />
-      <button type="submit">Add Location</button>
+      <input type="number" id="superId" placeholder="ID do supermercado" required />
+      <input type="text" id="address" placeholder="Endereço" />
+      <button type="submit">Adicionar Endereço</button>
     </form>
-    <h2>Locations</h2>
+    <h2>Endereços</h2>
     <table border="1">
-      <thead><tr><th>ID</th><th>Supermarket</th><th>Address</th></tr></thead>
+      <thead><tr><th>ID</th><th>Supermercado</th><th>Endereço</th></tr></thead>
       <tbody id="locTable"></tbody>
     </table>
     <script>
@@ -21,7 +21,7 @@
         const tbody = document.getElementById("locTable");
         tbody.innerHTML = "";
         data.forEach(l => {
-          tbody.innerHTML += `<tr><td>${l.id}</td><td>${l.name}</td><td>${l.address || ""}</td></tr>`;
+          tbody.innerHTML += `<tr><td>${l.id}</td><td>${l.supermarketpn??l.supermarket}</td><td>${l.address || ""}</td></tr>`;
         });
       }
       document.getElementById("locForm").onsubmit = async e => {
