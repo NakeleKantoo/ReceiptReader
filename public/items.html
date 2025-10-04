@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Items</title>
+</head>
+<body>
+  <h1>Items</h1>
+
+  <form id="itemForm">
+    <label>Name: <input type="text" name="name" required></label><br>
+    <button type="submit">Add Item</button>
+  </form>
+
+  <h2>Items List</h2>
+  <table border="1">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Name</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="itemsTable"></tbody>
+  </table>
+
+  <script>
+    async function loadItems() {
+      const res = await fetch("/api/items");
+      const items = await res.json();
+      const tbody = document.getElementById("itemsTable");
+      tbody.innerHTML = "";
+
+      items.forEach(item => {
+        const tr = document.createElement("tr");
+
+        tr.innerHTML = `
+          <td>${item.id}</td>
+          <td>
+            <input type="text" value="${item.name}" data-id="${item.id}">
+          </td>
+          <td>
+            <button onclick="updateItem(${item.id})">Update</button>
+            <button onclick="deleteItem(${item.id})">Delete</button>
+          </td>
+        `;
+
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function updateItem(id) {
+      const input = document.querySelector(`input[data-id='${id}']`);
+      const newName = input.value;
+
+      await fetch(`/api/items/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName })
+      });
+
+      loadItems();
+    }
+
+    async function deleteItem(id) {
+      await fetch(`/api/items/${id}`, { method: "DELETE" });
+      loadItems();
+    }
+
+    document.getElementById("itemForm").addEventListener("submit", async e => {
+      e.preventDefault();
+      const form = e.target;
+      const data = Object.fromEntries(new FormData(form).entries());
+
+      await fetch("/api/items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
+      });
+
+      form.reset();
+      loadItems();
+    });
+
+    loadItems();
+  </script>
+</body>
+</html>

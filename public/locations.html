@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+  <head><title>Locations</title></head>
+  <body>
+    <h1>Locations</h1>
+    <nav><a href="index.html">Início</a></nav>
+    <form id="locForm">
+      <input type="number" id="superId" placeholder="Supermarket ID" required />
+      <input type="text" id="address" placeholder="Address" />
+      <button type="submit">Add Location</button>
+    </form>
+    <h2>Locations</h2>
+    <table border="1">
+      <thead><tr><th>ID</th><th>Supermarket</th><th>Address</th></tr></thead>
+      <tbody id="locTable"></tbody>
+    </table>
+    <script>
+      async function loadLocations() {
+        const res = await fetch("/api/locations");
+        const data = await res.json();
+        const tbody = document.getElementById("locTable");
+        tbody.innerHTML = "";
+        data.forEach(l => {
+          tbody.innerHTML += `<tr><td>${l.id}</td><td>${l.name}</td><td>${l.address || ""}</td></tr>`;
+        });
+      }
+      document.getElementById("locForm").onsubmit = async e => {
+        e.preventDefault();
+        const supermarket_id = +document.getElementById("superId").value;
+        const address = document.getElementById("address").value;
+        await fetch("/api/locations", {
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({ supermarket_id, address })
+        });
+        e.target.reset();
+        loadLocations();
+      };
+      loadLocations();
+    </script>
+  </body>
+</html>

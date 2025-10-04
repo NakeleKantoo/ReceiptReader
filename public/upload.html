@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Upload Receipt</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  </head>
+  <body>
+    <h1>Upload Receipt</h1>
+    <nav><a href="index.html">Home</a></nav>
+    <form id="uploadForm" enctype="multipart/form-data">
+      <input type="file" name="image" id="imageInput" accept="image/*" required />
+      <button type="submit">Upload</button>
+    </form>
+
+    <h2>Parsed Result</h2>
+    <pre id="result"></pre>
+
+    <script>
+      document.getElementById("uploadForm").onsubmit = async e => {
+        e.preventDefault();
+        const formData = new FormData();
+        formData.append("image", document.getElementById("imageInput").files[0]);
+
+        const res = await fetch("/api/upload", {
+          method: "POST",
+          body: formData
+        });
+        const data = await res.json();
+        document.getElementById("result").textContent = JSON.stringify(data, null, 2);
+      };
+    </script>
+  </body>
+</html>

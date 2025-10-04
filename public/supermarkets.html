@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Supermercados</title>
+</head>
+<body>
+  <h1>Supermercados</h1>
+  <nav><a href="index.html">Início</a></nav>
+
+  <form id="supermarketForm">
+    <label>Nome: <input type="text" name="name" required></label><br>
+    <label>Nome fantasia: <input type="text" name="pretty_name"></label><br>
+    <button type="submit">Adicionar supermercado</button>
+  </form>
+
+  <h2>Supermercados</h2>
+  <table border="1">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Nome</th>
+        <th>Nome fantasia</th>
+        <th>Ações</th>
+      </tr>
+    </thead>
+    <tbody id="supermarketsTable"></tbody>
+  </table>
+
+  <script>
+    async function loadSupermarkets() {
+      const res = await fetch("/api/supermarkets");
+      const supermarkets = await res.json();
+      const tbody = document.getElementById("supermarketsTable");
+      tbody.innerHTML = "";
+
+      supermarkets.forEach(s => {
+        const tr = document.createElement("tr");
+
+        tr.innerHTML = `
+          <td>${s.id}</td>
+          <td><input type="text" value="${s.name}" data-id="${s.id}" data-field="name"></td>
+          <td><input type="text" value="${s.pretty_name || ""}" data-id="${s.id}" data-field="pretty_name"></td>
+          <td>
+            <button onclick="updateSupermarket(${s.id})">Update</button>
+            <button onclick="deleteSupermarket(${s.id})">Delete</button>
+          </td>
+        `;
+
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function updateSupermarket(id) {
+      const nameInput = document.querySelector(`input[data-id='${id}'][data-field='name']`);
+      const prettyInput = document.querySelector(`input[data-id='${id}'][data-field='pretty_name']`);
+
+      await fetch(`/api/supermarkets/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: nameInput.value,
+          pretty_name: prettyInput.value
+        })
+      });
+
+      loadSupermarkets();
+    }
+
+    async function deleteSupermarket(id) {
+      await fetch(`/api/supermarkets/${id}`, { method: "DELETE" });
+      loadSupermarkets();
+    }
+
+    document.getElementById("supermarketForm").addEventListener("submit", async e => {
+      e.preventDefault();
+      const form = e.target;
+      const data = Object.fromEntries(new FormData(form).entries());
+
+      await fetch("/api/supermarkets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
+      });
+
+      form.reset();
+      loadSupermarkets();
+    });
+
+    loadSupermarkets();
+  </script>
+</body>
+</html>

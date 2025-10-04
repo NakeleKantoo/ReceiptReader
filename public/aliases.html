@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+  <head><title>Item Aliases</title></head>
+  <body>
+    <h1>Item Aliases</h1>
+    <nav><a href="index.html">Home</a></nav>
+    <form id="aliasForm">
+      <input type="number" id="itemId" placeholder="Item ID" required />
+      <input type="text" id="alias" placeholder="Alias" required />
+      <button type="submit">Add Alias</button>
+    </form>
+    <h2>Aliases</h2>
+    <table border="1">
+      <thead><tr><th>ID</th><th>Item</th><th>Nome alternativo</th></tr></thead>
+      <tbody id="aliasTable"></tbody>
+    </table>
+    <script>
+      async function loadAliases() {
+        const res = await fetch("/api/item_aliases");
+        const data = await res.json();
+        const tbody = document.getElementById("aliasTable");
+        tbody.innerHTML = "";
+        data.forEach(a => {
+          tbody.innerHTML += `<tr><td>${a.id}</td><td>${a.name}</td><td>${a.alias}</td></tr>`;
+        });
+      }
+      document.getElementById("aliasForm").onsubmit = async e => {
+        e.preventDefault();
+        const item_id = +document.getElementById("itemId").value;
+        const alias = document.getElementById("alias").value;
+        await fetch("/api/item_aliases", {
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({ item_id, alias })
+        });
+        e.target.reset();
+        loadAliases();
+      };
+      loadAliases();
+    </script>
+  </body>
+</html>

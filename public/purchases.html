@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Compras</title>
+</head>
+<body>
+  <h1>Compras</h1>
+  <nav><a href="index.html">Início</a></nav>
+
+  <!-- Form to add a purchase -->
+  <form id="purchaseForm">
+    <label>Supermercado:
+      <select id="locationSelect" required></select>
+    </label>
+    <label>Forma de pagamento:
+      <select id="paymentSelect" required></select>
+    </label>
+    <h3>Produtos</h3>
+    <div id="itemsContainer">
+      <div class="itemRow">
+        <select class="itemSelect" name="itemId" required></select>
+        <input type="number" placeholder="Quantity" step="any" class="itemQty" required>
+        <input type="number" placeholder="Price" step="any" class="itemPrice" required>
+      </div>
+    </div>
+    <button type="button" id="addItemBtn">Adicionar mais um produto</button>
+    <button type="submit">Adicionar compra</button>
+  </form>
+
+  <h2>Compras</h2>
+  <table border="1">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Supermercado</th>
+        <th>Endereço</th>
+        <th>Forma de pagamento</th>
+        <th>Total</th>
+        <th>Produtos</th>
+        <th>Data</th>
+      </tr>
+    </thead>
+    <tbody id="purchaseTable"></tbody>
+  </table>
+
+  <script>
+    async function loadItemsDropdown() {
+      const res = await fetch("/api/items");
+      const items = await res.json();
+      const selects = document.getElementsByClassName("itemSelect");
+
+      for (let i=0; i<selects.length; i++) {
+        const select = selects[i];
+
+        select.innerHTML = ""; // clear existing
+  
+        items.forEach(item => {
+          const option = document.createElement("option");
+          option.value = item.id; // this is the real ID used in DB
+          option.textContent = item.name;
+          select.appendChild(option);
+        });
+      }
+    }
+
+    async function loadLocations() {
+      const res = await fetch("/api/locations");
+      const locations = await res.json();
+      const select = document.getElementById("locationSelect");
+      select.innerHTML = "";
+      locations.forEach(l => {
+        select.innerHTML += `<option value="${l.id}">${l.supermarketpn??l.supermarket} - ${l.address}</option>`;
+      });
+    }
+
+    async function loadPayments() {
+      const res = await fetch("/api/payment_methods");
+      const payments = await res.json();
+      const select = document.getElementById("paymentSelect");
+      select.innerHTML = "";
+      payments.forEach(p => {
+        select.innerHTML += `<option value="${p.id}">${p.method}</option>`;
+      });
+    }
+
+    function formatDateTime(iso) {
+  const d = new Date(iso);
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0'); // Months are 0-indexed
+  const year = d.getFullYear();
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  const seconds = String(d.getSeconds()).padStart(2, '0');
+  return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+}
+
+    async function loadPurchases() {
+      const res = await fetch("/api/purchases");
+      const purchases = await res.json();
+      const tbody = document.getElementById("purchaseTable");
+      tbody.innerHTML = "";
+      purchases.forEach(p => {
+        const prettyDate = formatDateTime(p.date)
+        tbody.innerHTML += `<tr>
+          <td>${p.id}</td>
+          <td>${p.supermarketpn??p.supermarket}</td>
+          <td>${p.address}</td>
+          <td>${p.payment_method}</td>
+          <td>R$${p.total}</td>
+          <td><a href="purchase.html?id=${p.id}">Detalhes</a></td>
+          <td>${prettyDate}</td>
+        </tr>`;
+      });
+    }
+
+    document.getElementById("addItemBtn").onclick = () => {
+      const container = document.getElementById("itemsContainer");
+      const div = document.createElement("div");
+      div.className = "itemRow";
+      div.innerHTML = `
+        <select class="itemSelect" name="itemId" required></select>
+        <input type="number" placeholder="Quantity" step="any" class="itemQty" required>
+        <input type="number" placeholder="Price" step="any" class="itemPrice" required>
+      `;
+      container.appendChild(div);
+      loadItemsDropdown();
+    };
+
+    document.getElementById("purchaseForm").onsubmit = async e => {
+      e.preventDefault();
+      const location_id = +document.getElementById("locationSelect").value;
+      const payment_method_id = +document.getElementById("paymentSelect").value;
+
+      const itemRows = Array.from(document.querySelectorAll(".itemRow"));
+      const items = itemRows.map(r => ({
+        item_id: +r.querySelector(".itemSelect").value,
+        quantity: parseFloat(r.querySelector(".itemQty").value),
+        price: parseFloat(r.querySelector(".itemPrice").value)
+      }));
+
+      const total = items.reduce((sum, i) => sum + i.quantity * i.price, 0);
+
+      // Insert purchase
+      const res = await fetch("/api/purchases", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ location_id, payment_method_id, total, items })
+      });
+
+      const data = await res.json();
+      if(data.success || data.id) {
+        alert("Purchase added!");
+        document.getElementById("purchaseForm").reset();
+        loadPurchases();
+      }
+    };
+
+    // Initial load
+    loadLocations();
+    loadPayments();
+    loadPurchases();
+    loadItemsDropdown();
+  </script>
+</body>
+</html>
