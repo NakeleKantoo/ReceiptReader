@@ -1,5 +1,5 @@
 # Use lightweight Node.js image
-FROM node:20-alpine
+FROM node:20-slim
 
 # Create app directory
 WORKDIR /app
@@ -13,6 +13,10 @@ COPY . .
 
 # Expose the web server port
 EXPOSE 3030
+
+#touch db
+RUN touch purchases.db
+RUN chmod 666 purchases.db
 
 # Default command
 CMD ["node", "server.js"]
