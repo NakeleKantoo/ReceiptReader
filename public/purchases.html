@@ -2,13 +2,16 @@
 <html>
 <head>
   <title>Compras</title>
+  <link rel="stylesheet" href="/styles.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 </head>
 <body>
   <h1>Compras</h1>
   <nav><a href="index.html">Início</a></nav>
 
+  <button id="mostrarForm">Adicionar Compra</button>
   <!-- Form to add a purchase -->
-  <form id="purchaseForm">
+  <form id="purchaseForm" hidden>
     <label>Supermercado:
       <select id="locationSelect" required></select>
     </label>
@@ -28,12 +31,11 @@
   </form>
 
   <h2>Compras</h2>
-  <table border="1">
+  <table>
     <thead>
       <tr>
         <th>ID</th>
         <th>Supermercado</th>
-        <th>Endereço</th>
         <th>Forma de pagamento</th>
         <th>Total</th>
         <th>Produtos</th>
@@ -99,16 +101,15 @@
       const purchases = await res.json();
       const tbody = document.getElementById("purchaseTable");
       tbody.innerHTML = "";
-      purchases.forEach(p => {
+      purchases.forEach(p => {//<td>${p.address}</td>
         const prettyDate = formatDateTime(p.date)
         tbody.innerHTML += `<tr>
-          <td>${p.id}</td>
-          <td>${p.supermarketpn??p.supermarket}</td>
-          <td>${p.address}</td>
-          <td>${p.payment_method}</td>
-          <td>R$${p.total}</td>
-          <td><a href="purchase.html?id=${p.id}">Detalhes</a></td>
-          <td>${prettyDate}</td>
+          <td class="tdId" data-label="ID">${p.id}</td>
+          <td data-label="Supermercado">${p.supermarketpn??p.supermarket}</td>
+          <td data-label="Forma de pagamento">${p.payment_method}</td>
+          <td data-label="Total">R$${p.total}</td>
+          <td data-label="Ver mais"><a href="purchase.html?id=${p.id}">Detalhes</a></td>
+          <td data-label="Data">${prettyDate}</td>
         </tr>`;
       });
     }
@@ -125,6 +126,11 @@
       container.appendChild(div);
       loadItemsDropdown();
     };
+
+    document.getElementById("mostrarForm").onclick = () => {
+      document.getElementById("mostrarForm").hidden = true;
+      document.getElementById("purchaseForm").hidden = false;
+    }
 
     document.getElementById("purchaseForm").onsubmit = async e => {
       e.preventDefault();

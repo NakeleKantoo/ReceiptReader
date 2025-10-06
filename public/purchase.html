@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <title>Detalhes da compra</title>
+  <link rel="stylesheet" href="/styles.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 </head>
 <body>
   <h1>Detalhes da compra</h1>
@@ -10,7 +12,7 @@
   <div id="purchaseInfo"></div>
 
   <h2>Produtos</h2>
-  <table border="1">
+  <table>
     <thead>
       <tr>
         <th>Produto</th>
@@ -62,10 +64,10 @@
       purchase.items.forEach(item => {
         const tr = document.createElement("tr");
         tr.innerHTML = `
-          <td>${item.item_name}</td>
-          <td>${item.quantity} ${item.unit}</td>
-          <td>R$ ${(item.price/item.quantity).toFixed(2)}</td>
-          <td>R$ ${item.price.toFixed(2)}</td>
+          <td data-label="Produto">${item.item_name}</td>
+          <td data-label="Quantidade">${item.quantity} ${item.unit}</td>
+          <td data-label="Preço Unitário">R$ ${(item.price/item.quantity).toFixed(2)}</td>
+          <td data-label="Preço Total">R$ ${item.price.toFixed(2)}</td>
         `;
         tbody.appendChild(tr);
       });

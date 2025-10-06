@@ -257,7 +257,7 @@ app.get("/api/item_aliases/:item_id", async (req, res) => {
 
 // List aliases for item
 app.get("/api/item_aliases/", async (req, res) => {
-  const rows = await db.all("SELECT ia.id, i.name, ia.alias FROM item_aliases AS ia JOIN items AS i ON i.id = ia.item_id");
+  const rows = await db.all("SELECT ia.id, ia.item_id, i.name, ia.alias FROM item_aliases AS ia JOIN items AS i ON i.id = ia.item_id");
   res.json(rows);
 });
 

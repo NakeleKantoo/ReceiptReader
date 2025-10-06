@@ -1,42 +1,162 @@
 <!DOCTYPE html>
 <html>
-  <head><title>Item Aliases</title></head>
+  <head>
+    <title>Nomes alternativos de produtos</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
   <body>
-    <h1>Item Aliases</h1>
-    <nav><a href="index.html">Home</a></nav>
+    <h1>Nomes alternativos de produtos</h1>
+    <nav><a href="index.html">Início</a></nav>
+
     <form id="aliasForm">
-      <input type="number" id="itemId" placeholder="Item ID" required />
-      <input type="text" id="alias" placeholder="Alias" required />
-      <button type="submit">Add Alias</button>
+      <label for="itemId">Produto:</label>
+      <select id="itemId" required></select>
+
+      <label for="alias">Nome alternativo:</label>
+      <input type="text" id="alias" placeholder="Alias name" required>
+
+      <button type="submit">Adicionar</button>
     </form>
-    <h2>Aliases</h2>
-    <table border="1">
-      <thead><tr><th>ID</th><th>Item</th><th>Nome alternativo</th></tr></thead>
+
+    <h2>Nomes alternativos de produtos</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Produto</th>
+          <th>Nome Alternativo</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
       <tbody id="aliasTable"></tbody>
     </table>
+
     <script>
+      let allItems = [];
+
+      // Load all items first
+      async function loadItems() {
+        const res = await fetch("/api/items");
+        allItems = await res.json();
+
+        const select = document.getElementById("itemId");
+        select.innerHTML = "";
+        allItems.forEach(item => {
+          const opt = document.createElement("option");
+          opt.value = item.id;
+          opt.textContent = item.name;
+          select.appendChild(opt);
+        });
+      }
+
+      // Helper: creates a dropdown for selecting items
+      function createItemDropdown(selectedId) {
+        const select = document.createElement("select");
+        select.dataset.field = "item_id";
+        let i = 0;
+        let j = 0;
+        allItems.forEach(item => {
+          const opt = document.createElement("option");
+          opt.value = item.id;
+          opt.textContent = item.name;
+          if (item.id === selectedId) j=i;
+          i++;
+          select.appendChild(opt);
+        });
+        select.selectedIndex = j
+        return select;
+      }
+
+      // Load aliases and populate rows
       async function loadAliases() {
         const res = await fetch("/api/item_aliases");
         const data = await res.json();
         const tbody = document.getElementById("aliasTable");
         tbody.innerHTML = "";
-        data.forEach(a => {
-          tbody.innerHTML += `<tr><td>${a.id}</td><td>${a.name}</td><td>${a.alias}</td></tr>`;
+
+        data.forEach(alias => {
+          const row = document.createElement("tr");
+
+          // ID
+          const idCell = document.createElement("td");
+          idCell.setAttribute("data-label", "ID");
+          idCell.classList.add("tdId");
+          idCell.textContent = alias.id;
+          row.appendChild(idCell);
+
+          // Item dropdown
+          const itemCell = document.createElement("td");
+          itemCell.setAttribute("data-label", "Produto");
+          const itemSelect = createItemDropdown(alias.item_id);
+          itemCell.appendChild(itemSelect);
+          row.appendChild(itemCell);
+
+          // Alias name input
+          const aliasCell = document.createElement("td");
+          aliasCell.setAttribute("data-label", "Nome alternativo");
+          const aliasInput = document.createElement("input");
+          aliasInput.type = "text";
+          aliasInput.value = alias.alias;
+          aliasInput.dataset.field = "alias";
+          aliasCell.appendChild(aliasInput);
+          row.appendChild(aliasCell);
+
+          // Actions
+          const actionsCell = document.createElement("td");
+          actionsCell.setAttribute("data-label", "Ações");
+          const saveBtn = document.createElement("button");
+          saveBtn.textContent = "Atualizar";
+          saveBtn.className = "edit";
+          saveBtn.onclick = async () => {
+            const updatedAlias = {
+              item_id: +itemSelect.value,
+              alias: aliasInput.value
+            };
+            await fetch(`/api/item_aliases/${alias.id}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(updatedAlias)
+            });
+            loadAliases();
+          };
+
+          const delBtn = document.createElement("button");
+          delBtn.textContent = "Deletar";
+          delBtn.className = "delete";
+          delBtn.onclick = async () => {
+            await fetch(`/api/item_aliases/${alias.id}`, { method: "DELETE" });
+            loadAliases();
+          };
+
+          actionsCell.appendChild(saveBtn);
+          actionsCell.appendChild(delBtn);
+          row.appendChild(actionsCell);
+
+          tbody.appendChild(row);
         });
       }
+
+      // Add new alias
       document.getElementById("aliasForm").onsubmit = async e => {
         e.preventDefault();
         const item_id = +document.getElementById("itemId").value;
         const alias = document.getElementById("alias").value;
         await fetch("/api/item_aliases", {
-          method:"POST",
-          headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({ item_id, alias })
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ item_id, alias })
         });
         e.target.reset();
         loadAliases();
       };
-      loadAliases();
+
+      async function init() {
+        await loadItems();   // must load before aliases so dropdowns work
+        await loadAliases();
+      }
+
+      init();
     </script>
   </body>
 </html>

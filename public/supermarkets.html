@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <title>Supermercados</title>
+  <link rel="stylesheet" href="/styles.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 </head>
 <body>
   <h1>Supermercados</h1>
@@ -15,7 +17,7 @@
   </form>
 
   <h2>Supermercados</h2>
-  <table border="1">
+  <table>
     <thead>
       <tr>
         <th>ID</th>
@@ -38,12 +40,12 @@
         const tr = document.createElement("tr");
 
         tr.innerHTML = `
-          <td>${s.id}</td>
-          <td><input type="text" value="${s.name}" data-id="${s.id}" data-field="name"></td>
-          <td><input type="text" value="${s.pretty_name || ""}" data-id="${s.id}" data-field="pretty_name"></td>
-          <td>
-            <button onclick="updateSupermarket(${s.id})">Update</button>
-            <button onclick="deleteSupermarket(${s.id})">Delete</button>
+          <td data-label="ID" class="tdId">${s.id}</td>
+          <td data-label="Nome"><input type="text" value="${s.name}" data-id="${s.id}" data-field="name"></td>
+          <td data-label="Nome fantasia"><input type="text" value="${s.pretty_name || ""}" data-id="${s.id}" data-field="pretty_name"></td>
+          <td data-label="Ações">
+            <button onclick="updateSupermarket(${s.id})">Atualizar</button>
+            <button onclick="deleteSupermarket(${s.id})">Deletar</button>
           </td>
         `;
 

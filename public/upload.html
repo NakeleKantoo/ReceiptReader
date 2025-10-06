@@ -1,32 +1,66 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Upload Receipt</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Escanear</title>
+    <link rel="stylesheet" href="/styles.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      #message {
+        margin-top: 1rem;
+        font-weight: bold;
+      }
+      #message.success { color: #28a745; } /* green */
+      #message.error { color: #dc3545; }   /* red */
+      #result { display: none; }
+    </style>
   </head>
   <body>
-    <h1>Upload Receipt</h1>
-    <nav><a href="index.html">Home</a></nav>
+    <h1>Escanear nota fiscal</h1>
+    <nav><a href="index.html">Início</a></nav>
+
     <form id="uploadForm" enctype="multipart/form-data">
       <input type="file" name="image" id="imageInput" accept="image/*" required />
-      <button type="submit">Upload</button>
+      <button type="submit">Escanear</button>
     </form>
 
-    <h2>Parsed Result</h2>
+    <div id="message"></div>
     <pre id="result"></pre>
 
     <script>
       document.getElementById("uploadForm").onsubmit = async e => {
         e.preventDefault();
+        const msg = document.getElementById("message");
+        const result = document.getElementById("result");
+        msg.textContent = "Enviando...";
+        msg.className = "";
+        result.style.display = "none";
+        result.textContent = "";
+
         const formData = new FormData();
         formData.append("image", document.getElementById("imageInput").files[0]);
 
-        const res = await fetch("/api/upload", {
-          method: "POST",
-          body: formData
-        });
-        const data = await res.json();
-        document.getElementById("result").textContent = JSON.stringify(data, null, 2);
+        try {
+          const res = await fetch("/api/upload", { method: "POST", body: formData });
+          const data = await res.json();
+
+          if (res.ok && data.success && data.purchase_id) {
+            msg.innerHTML = `
+              Nota processada e adicionada com sucesso!<br>
+              <a href="/purchase.html?id=${data.purchase_id}">
+                Ver compra #${data.purchase_id}
+              </a>
+            `;
+            msg.className = "success";
+          } else {
+            msg.textContent = data.error || "Erro ao processar a nota.";
+            msg.className = "error";
+            result.style.display = "block";
+            result.textContent = JSON.stringify(data, null, 2);
+          }
+        } catch (err) {
+          msg.textContent = "Erro ao conectar ao servidor.";
+          msg.className = "error";
+        }
       };
     </script>
   </body>

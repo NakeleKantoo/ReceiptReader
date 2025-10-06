@@ -1,6 +1,10 @@
 <!DOCTYPE html>
 <html>
-  <head><title>Endereços</title></head>
+  <head>
+    <title>Endereços</title>
+    <link rel="stylesheet" href="/styles.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+  </head>
   <body>
     <h1>Endereços</h1>
     <nav><a href="index.html">Início</a></nav>
@@ -10,7 +14,7 @@
       <button type="submit">Adicionar Endereço</button>
     </form>
     <h2>Endereços</h2>
-    <table border="1">
+    <table>
       <thead><tr><th>ID</th><th>Supermercado</th><th>Endereço</th></tr></thead>
       <tbody id="locTable"></tbody>
     </table>
@@ -21,7 +25,12 @@
         const tbody = document.getElementById("locTable");
         tbody.innerHTML = "";
         data.forEach(l => {
-          tbody.innerHTML += `<tr><td>${l.id}</td><td>${l.supermarketpn??l.supermarket}</td><td>${l.address || ""}</td></tr>`;
+          tbody.innerHTML += `
+          <tr>
+            <td data-label="ID" class="tdId">${l.id}</td>
+            <td data-label="Supermercado">${l.supermarketpn??l.supermarket}</td>
+            <td data-label="Endereço">${l.address || ""}</td>
+          </tr>`;
         });
       }
       document.getElementById("locForm").onsubmit = async e => {

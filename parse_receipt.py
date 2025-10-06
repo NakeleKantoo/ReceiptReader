@@ -93,6 +93,7 @@ if resp.status_code == 200:
     compra['total'] = total
     compra['datetime'] = datetime
     compra['payment_method'] = payment_method
+    compra['url'] = url
 
 
 print(json.dumps(compra,indent=4,ensure_ascii=False))
