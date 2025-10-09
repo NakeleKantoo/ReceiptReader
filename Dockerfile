@@ -30,5 +30,4 @@ EXPOSE 3030
 RUN touch purchases.db
 RUN chmod 666 purchases.db
                                                         
-# Default command 
 CMD ["node", "server.js"]
