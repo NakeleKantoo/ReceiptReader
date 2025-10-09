@@ -1,4 +1,3 @@
-from pyzbar.pyzbar import decode
 from PIL import Image
 import requests
 from bs4 import BeautifulSoup
