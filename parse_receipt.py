@@ -1,4 +1,3 @@
-from pyzbar.pyzbar import decode
 from PIL import Image
 import requests
 from bs4 import BeautifulSoup
@@ -7,14 +6,22 @@ from qreader import QReader
 from cv2 import imread
 import sys
 import re
+import os
 
-img = imread(sys.argv[1])
+arg = sys.argv[1]
 
-reader = QReader()
+url = ""
 
-decoded = reader.detect_and_decode(img)
+if os.path.exists(arg):
+    img = imread(sys.argv[1])
+    reader = QReader()
+    decoded = reader.detect_and_decode(img)
+    url = decoded[0]
+else:
+    url = "https://portalsped.fazenda.mg.gov.br/portalnfce/sistema/qrcode.xhtml?p="+arg+"|2|1|1|"
 
-url = decoded[0]
+if url=="":
+    raise "Nenhum arquivo ou código de acesso providenciado"
 
 resp = requests.get(url)
 
@@ -24,6 +31,8 @@ supermercado = {'location':'', 'name':''}
 
 payment_method = ''
 total = ''
+
+cpf = ''
 
 items = []
 
@@ -64,6 +73,15 @@ if resp.status_code == 200:
         if re.match(dateregex, i.text):
             datetime = i.text.strip()
 
+    #get cpf
+    consumidor = soup.find('div',{'id':'collapse5'})
+    consumidortbody = consumidor.find('tbody')
+    count = 0
+    for i in consumidortbody.find_all('td'):
+        if count == 1:
+            cpf = i.text.strip()
+        count+=1
+
 
     table = soup.find('tbody',{'id':"myTable"})
     #print(soup, table)
@@ -93,6 +111,7 @@ if resp.status_code == 200:
     compra['total'] = total
     compra['datetime'] = datetime
     compra['payment_method'] = payment_method
+    compra['cpf'] = cpf
     compra['url'] = url
 
 
