@@ -241,3 +241,28 @@ td select {
     margin-top: 0.3rem;
   }
 }
+
+      /* Filter bar styling */
+      .filter-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+        padding: 1rem;
+        justify-content: center;
+      }
+
+      .filter-bar input,
+      .filter-bar select,
+      .filter-bar button {
+        padding: 0.5rem;
+        border: 1px solid #007BFF;
+        border-radius: 6px;
+        font-size: 1rem;
+        flex-grow: 1;
+      }
+
+      .flex {
+        display: flex;
+        gap: 0.5rem;
+      }
