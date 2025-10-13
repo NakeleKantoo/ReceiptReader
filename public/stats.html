@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Estatísticas</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+      body {
+        padding: 1rem;
+      }
+      canvas {
+        max-width: 100%;
+        margin-bottom: 2rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Estatísticas de Compras</h1>
+    <nav>
+      <a href="index.html">Início</a>
+    </nav>
+
+    <h2>Total gasto por supermercado</h2>
+    <canvas id="supermarketChart"></canvas>
+
+    <h2>Total gasto por forma de pagamento</h2>
+    <canvas id="paymentChart"></canvas>
+
+    <h2>Total gasto por mês</h2>
+    <canvas id="monthlyChart"></canvas>
+
+    <script>
+      async function loadStats() {
+        // 1. Total spent per supermarket
+        const supRes = await fetch("/api/stats/supermarkets");
+        const supData = await supRes.json();
+        new Chart(document.getElementById("supermarketChart"), {
+          type: 'bar',
+          data: {
+            labels: supData.map(d => d.supermarket),
+            datasets: [{
+              label: 'Total gasto (R$)',
+              data: supData.map(d => d.total),
+              backgroundColor: 'rgba(0,123,255,0.6)'
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: false } }
+          }
+        });
+
+        // 2. Total spent per payment method
+        const payRes = await fetch("/api/stats/payment_methods");
+        const payData = await payRes.json();
+        new Chart(document.getElementById("paymentChart"), {
+          type: 'pie',
+          data: {
+            labels: payData.map(d => d.method),
+            datasets: [{
+              label: 'Total gasto',
+              data: payData.map(d => d.total),
+              backgroundColor: ['#007bff','#28a745','#ffc107','#dc3545','#17a2b8']
+            }]
+          },
+          options: { responsive: true }
+        });
+
+        // 3. Total spent per month
+        const monthRes = await fetch("/api/stats/monthly");
+        const monthData = await monthRes.json();
+        new Chart(document.getElementById("monthlyChart"), {
+          type: 'line',
+          data: {
+            labels: monthData.map(d => d.month),
+            datasets: [{
+              label: 'Total gasto (R$)',
+              data: monthData.map(d => d.total),
+              fill: false,
+              borderColor: 'rgba(0,123,255,0.8)',
+              tension: 0.3
+            }]
+          },
+          options: { responsive: true }
+        });
+      }
+
+      loadStats();
+    </script>
+  </body>
+</html>

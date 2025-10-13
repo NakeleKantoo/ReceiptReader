@@ -462,6 +462,43 @@ app.get("/api/payment_methods", async (req, res) => {
   }
 });
 
+// ---- STATISTICS ----
+// Total spent per supermarket
+app.get("/api/stats/supermarkets", async (req, res) => {
+  const data = await db.all(`
+    SELECT s.pretty_name AS supermarket, SUM(p.total) AS total
+    FROM purchases p
+    JOIN locations l ON p.location_id = l.id
+    JOIN supermarkets s ON l.supermarket_id = s.id
+    GROUP BY s.id
+    ORDER BY total DESC
+  `);
+  res.json(data);
+});
+
+// Total spent per payment method
+app.get("/api/stats/payment_methods", async (req, res) => {
+  const data = await db.all(`
+    SELECT pm.method, SUM(p.total) AS total
+    FROM purchases p
+    JOIN payment_methods pm ON p.payment_method_id = pm.id
+    GROUP BY pm.id
+  `);
+  res.json(data);
+});
+
+// Total spent per month
+app.get("/api/stats/monthly", async (req, res) => {
+  const data = await db.all(`
+    SELECT strftime('%Y-%m', p.date) AS month, SUM(p.total) AS total
+    FROM purchases p
+    GROUP BY month
+    ORDER BY month
+  `);
+  res.json(data);
+});
+
+
 
 //
 // ========== SERVER START ==========
