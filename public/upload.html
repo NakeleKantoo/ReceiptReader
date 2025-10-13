@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Escanear QR com jsQR</title>
+  <title>Escanear</title>
   <link rel="stylesheet" href="/styles.css">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
@@ -30,7 +30,7 @@
 </head>
 <body>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-  <h1>Escanear QR com jsQR</h1>
+  <h1>Escanear Nota Fiscal</h1>
   <nav><a href="index.html">Início</a></nav>
 
   <div id="video-container">
@@ -76,6 +76,8 @@
       if (code) {
         // draw bounding box
         scanned = true
+        video.srcObject.getTracks().forEach(track => track.stop());
+
         ctx.strokeStyle = 'lime';
         ctx.lineWidth = 4;
         ctx.beginPath();
