@@ -5,6 +5,7 @@ import cors from "cors";
 import { initDB } from "./db.js";
 import multer from "multer";
 import { spawn } from "child_process";
+import { readNfcFromUrl } from "./parse_receipt.js";
 
 const app = express();
 const PORT = 3030;
@@ -112,6 +113,84 @@ app.post("/api/upload", upload.single("image"), async (req, res) => {
   });
 });
 
+app.post('/api/upload-qr', async (req, res) => {
+  const { qr_data } = req.body;
+  try {
+    
+    const parsed = await readNfcFromUrl(qr_data);
+
+    try {
+      // 1. Supermarket
+      let supermarket = await db.get("SELECT * FROM supermarkets WHERE name = ?", [parsed.supermarket.name]);
+      if (!supermarket) {
+        const result = await db.run("INSERT INTO supermarkets (name) VALUES (?)", [parsed.supermarket.name]);
+        supermarket = { id: result.lastID, name: parsed.supermarket.name };
+      }
+
+      // 2. Location
+      let location = await db.get(
+        "SELECT * FROM locations WHERE supermarket_id = ? AND address = ?",
+        [supermarket.id, parsed.supermarket.location]
+      );
+      if (!location) {
+        const result = await db.run(
+          "INSERT INTO locations (supermarket_id, address) VALUES (?, ?)",
+          [supermarket.id, parsed.supermarket.location]
+        );
+        location = { id: result.lastID, supermarket_id: supermarket.id, address: parsed.supermarket.location };
+      }
+
+      // 3. Payment method
+      let payment = await db.get("SELECT * FROM payment_methods WHERE method = ?", [parsed.payment_method]);
+      if (!payment) {
+        const result = await db.run("INSERT INTO payment_methods (method) VALUES (?)", [parsed.payment_method]);
+        payment = { id: result.lastID, method: parsed.payment_method };
+      }
+
+      // 4. Insert purchase
+      const datetime = new Date(parseReceiptDate(parsed.datetime))
+      const datePurchase = datetime.toISOString()
+      const purchaseResult = await db.run(
+        "INSERT INTO purchases (location_id, date, total, payment_method_id) VALUES (?, ?, ?, ?)",
+        [location.id, datePurchase, parseFloat(parsed.total.replace(",", ".")), payment.id]
+      );
+      const purchase_id = purchaseResult.lastID;
+
+      // 5. Insert items
+      for (const it of parsed.items) {
+        let item = await db.get("SELECT * FROM items WHERE name = ?", [it.name]);
+        if (!item) {
+          //try get alias
+          item = await db.get("SELECT items.id FROM item_aliases JOIN items ON items.id = item_aliases.item_id WHERE alias = ?", [it.name])
+          if (!item) {
+            const result = await db.run("INSERT INTO items (name) VALUES (?)", [it.name]);
+            const alias = await db.run("INSERT INTO item_aliases (item_id, alias) VALUES (?,?)", [result.lastID,it.name]);
+            item = { id: result.lastID, name: it.name };
+          }
+        }
+
+        // Insert into purchase_items
+        await db.run(
+          "INSERT INTO purchase_items (purchase_id, item_id, quantity, unit, price) VALUES (?, ?, ?, ?, ?)",
+          [
+            purchase_id,
+            item.id,
+            parseFloat(it.qtd.replace(",", ".")),
+            it.unit,
+            parseFloat(it.price.replace("R$","").replace(",", ".").trim())
+          ]
+        );
+      }
+
+      res.json({ success: true, purchase_id });
+    } catch (err) {
+      res.status(500).json({ success: false, error: 'Erro ao processar QR.' });
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: 'Erro ao processar QR.' });
+  }
+});
 
 function parseReceiptDate(str) {
   // Example: "03/10/2025 14:30"
