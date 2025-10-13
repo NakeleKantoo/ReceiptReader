@@ -39,6 +39,13 @@
   </div>
   <div id="message">Aponte a câmera para o QR code...</div>
 
+  <button id="restartBtn" hidden>Escanear outra vez</button>
+
+  <form id="numberForm">
+    <input type="number" id="numberInput" placeholder="DIgite o código de acesso" required />
+    <button type="submit">Enviar</button>
+  </form>
+
   <script type="module">
 
     const video = document.getElementById('video');
@@ -75,8 +82,9 @@
 
       if (code) {
         // draw bounding box
-        scanned = true
+        scanned = true;
         video.srcObject.getTracks().forEach(track => track.stop());
+        document.getElementById('restartBtn').hidden = false;
 
         ctx.strokeStyle = 'lime';
         ctx.lineWidth = 4;
@@ -123,6 +131,43 @@
     }
 
     startCamera();
+
+    document.getElementById('restartBtn').onclick = () => {
+      scanned = false;
+      startCamera();
+      document.getElementById('restartBtn').hidden = true;
+    }
+
+    document.getElementById('numberForm').addEventListener('submit', e => {
+      e.preventDefault();
+      const number = numberInput.value.replace(" ","").replace(".","").replace("/","");
+      const payload = `https://portalsped.fazenda.mg.gov.br/portalnfce/sistema/qrcode.xhtml?p=${number}|2|1|1|`;
+
+      fetch('/api/upload-qr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ qr_data: payload })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.purchase_id) {
+          message.innerHTML = `
+            Nota enviada com sucesso!<br>
+            <a href="/purchase.html?id=${data.purchase_id}">
+              Ver compra #${data.purchase_id}
+            </a>
+          `;
+          message.className = 'success';
+        } else {
+          message.textContent = data.error || 'Erro ao enviar.';
+          message.className = 'error';
+        }
+      })
+      .catch(() => {
+        message.textContent = 'Erro ao conectar ao servidor.';
+        message.className = 'error';
+      });
+    });
   </script>
 
 </body>
