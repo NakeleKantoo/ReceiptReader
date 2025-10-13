@@ -63,7 +63,10 @@
       });
     }
 
+    let scanned = false;
+
     async function tick() {
+      if (scanned) return;
       hiddenCtx.drawImage(video, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
       const imageData = hiddenCtx.getImageData(0, 0, hiddenCanvas.width, hiddenCanvas.height);
 
@@ -72,6 +75,7 @@
 
       if (code) {
         // draw bounding box
+        scanned = true
         ctx.strokeStyle = 'lime';
         ctx.lineWidth = 4;
         ctx.beginPath();
