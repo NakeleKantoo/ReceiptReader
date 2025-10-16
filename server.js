@@ -4,6 +4,7 @@ import bodyParser from "body-parser";
 import cors from "cors";
 import { initDB } from "./db.js";
 import { readNfcFromUrl } from "./parse_receipt.js";
+import { parseBoleto } from "./boleto-utils-wrapper.js";
 
 const app = express();
 const PORT = 3030;
@@ -497,6 +498,13 @@ app.get("/api/stats/monthly", async (req, res) => {
   `);
   res.json(data);
 });
+
+// ---- BOLETOS ----
+app.post("/api/boleto", async (req, res) => {
+  const { code } = req.body;
+  const boleto = parseBoleto(code);
+  res.status(200).json({success:true, boleto:boleto});
+})
 
 
 

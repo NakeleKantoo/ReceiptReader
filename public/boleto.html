@@ -2,102 +2,121 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Boleto Scanner</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Boleto Scanner (Resilient)</title>
   <script type="module">
-    import { BrowserMultiFormatReader } from 'https://cdn.jsdelivr.net/npm/@zxing/browser@latest/+esm';
-    import { validarBoleto, identificarTipoCodigo } from 'https://cdn.jsdelivr.net/npm/@mrmgomes/boleto-utils/+esm';
+    import Quagga from "https://cdn.jsdelivr.net/npm/@ericblade/quagga2/+esm";
 
-    const video = document.getElementById('preview');
+    const videoContainer = document.getElementById('video');
+    const status = document.getElementById('status');
     const output = document.getElementById('output');
-    const dataBox = document.getElementById('data');
 
-    const codeReader = new BrowserMultiFormatReader();
-    let lastCode = '';
+    let recentCodes = [];
+    let stableCode = null;
 
-    async function parseBoleto(code) {
-      try {
-        const tipoCodigo = identificarTipoCodigo(code);
-        const result = validarBoleto(code, tipoCodigo);
-        return {
-          success: result.sucesso,
-          message: result.mensagem,
-          type: result.tipoBoleto,
-          bankCode: result.codigoBanco,
-          barcode: result.codigoBarras,
-          linhaDigitavel: result.linhaDigitavel,
-          value: result.valor,
-          dueDate: result.vencimento,
-          newDueDate2025: result.vencimentoComNovoFator2025,
-        };
-      } catch (err) {
-        return { success: false, message: err.message };
-      }
-    }
-
-    async function startScanner() {
-      const devices = await BrowserMultiFormatReader.listVideoInputDevices();
-      if (devices.length === 0) {
-        output.textContent = 'No camera found.';
+    Quagga.init({
+      inputStream: {
+        name: "Live",
+        type: "LiveStream",
+        target: videoContainer,
+        constraints: {
+          width: { ideal: 720 },
+          height: { ideal: 1280 },
+          facingMode: "environment"
+        }
+      },
+      decoder: {
+        readers: [
+          "code_128_reader",
+          "i2of5_reader",
+          "code_39_reader",
+          "ean_reader"
+        ],
+        multiple: false
+      },
+      locator: {
+        patchSize: "medium",
+        halfSample: true
+      },
+      frequency: 5,
+      locate: true,
+    }, err => {
+      if (err) {
+        console.error(err);
+        status.textContent = "Error starting camera.";
         return;
       }
+      Quagga.start();
+      status.textContent = "Scanning...";
+    });
 
-      const firstDeviceId = devices[0].deviceId;
+    Quagga.onProcessed(result => {
+      const ctx = Quagga.canvas.ctx.overlay;
+      const canvas = Quagga.canvas.dom.overlay;
+      if (result && result.boxes) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        result.boxes.filter(b => b !== result.box)
+          .forEach(box => {
+            Quagga.ImageDebug.drawPath(box, { x: 0, y: 1 }, ctx, { color: "green", lineWidth: 2 });
+          });
+      }
+    });
 
-      codeReader.decodeFromVideoDevice(firstDeviceId, video, async (result, err) => {
-        if (result) {
-          const text = result.getText().replace(/\s/g, '');
-          if (text !== lastCode) {
-            lastCode = text;
-            output.textContent = text;
-            const info = await parseBoleto(text);
-            dataBox.textContent = JSON.stringify(info, null, 2);
-          }
-        }
-      });
-    }
+    Quagga.onDetected(async result => {
+      const code = result.codeResult.code.replace(/\s/g, '');
+      if (code.length !== 44) return; // ignore short reads
+        status.textContent = "✅ Stable code detected!";
+        const res = await fetch("/api/boleto", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code })
+        });
 
-    startScanner();
+        if (!res.ok) throw new Error(`Server returned ${res.status}`);
+        const data = await res.json();
+
+        output.textContent = JSON.stringify(data, null, 2);
+        Quagga.stop();
+    });
   </script>
 
   <style>
     body {
-      background: #111;
+      background: #0c0c0c;
       color: #eee;
       font-family: monospace;
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 20px;
+      text-align: center;
     }
-    video {
+    #video {
       width: 90%;
-      max-width: 600px;
+      max-width: 700px;
       border: 3px solid #ff6600;
       border-radius: 10px;
-      margin-bottom: 10px;
+      margin-top: 10px;
+      position: relative;
     }
     pre {
-      background: #222;
+      background: #111;
       color: #0f0;
-      padding: 10px;
-      border-radius: 8px;
-      max-width: 600px;
+      padding: 12px;
+      max-width: 700px;
+      text-align: left;
+      border-radius: 10px;
       overflow-x: auto;
-      white-space: pre-wrap;
-      word-break: break-all;
     }
-    #output {
-      margin: 10px;
-      font-size: 1.2em;
+    #status {
       color: #ffcc00;
+      margin: 10px;
     }
   </style>
 </head>
 <body>
-  <h2>Boleto Scanner 📷</h2>
-  <video id="preview" autoplay playsinline></video>
-  <div id="output">Scanning...</div>
-  <pre id="data"></pre>
+  <h2>Boleto Scanner (Resilient)</h2>
+  <div id="status">Initializing...</div>
+  <div id="video"></div>
+  <pre id="output">Waiting for code...</pre>
 </body>
 </html>
