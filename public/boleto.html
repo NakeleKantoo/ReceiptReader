@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Boleto Scanner</title>
+  <script type="module">
+    import { BrowserMultiFormatReader } from 'https://cdn.jsdelivr.net/npm/@zxing/browser@latest/+esm';
+    import { validarBoleto, identificarTipoCodigo } from 'https://cdn.jsdelivr.net/npm/@mrmgomes/boleto-utils/+esm';
+
+    const video = document.getElementById('preview');
+    const output = document.getElementById('output');
+    const dataBox = document.getElementById('data');
+
+    const codeReader = new BrowserMultiFormatReader();
+    let lastCode = '';
+
+    async function parseBoleto(code) {
+      try {
+        const tipoCodigo = identificarTipoCodigo(code);
+        const result = validarBoleto(code, tipoCodigo);
+        return {
+          success: result.sucesso,
+          message: result.mensagem,
+          type: result.tipoBoleto,
+          bankCode: result.codigoBanco,
+          barcode: result.codigoBarras,
+          linhaDigitavel: result.linhaDigitavel,
+          value: result.valor,
+          dueDate: result.vencimento,
+          newDueDate2025: result.vencimentoComNovoFator2025,
+        };
+      } catch (err) {
+        return { success: false, message: err.message };
+      }
+    }
+
+    async function startScanner() {
+      const devices = await BrowserMultiFormatReader.listVideoInputDevices();
+      if (devices.length === 0) {
+        output.textContent = 'No camera found.';
+        return;
+      }
+
+      const firstDeviceId = devices[0].deviceId;
+
+      codeReader.decodeFromVideoDevice(firstDeviceId, video, async (result, err) => {
+        if (result) {
+          const text = result.getText().replace(/\s/g, '');
+          if (text !== lastCode) {
+            lastCode = text;
+            output.textContent = text;
+            const info = await parseBoleto(text);
+            dataBox.textContent = JSON.stringify(info, null, 2);
+          }
+        }
+      });
+    }
+
+    startScanner();
+  </script>
+
+  <style>
+    body {
+      background: #111;
+      color: #eee;
+      font-family: monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+    video {
+      width: 90%;
+      max-width: 600px;
+      border: 3px solid #ff6600;
+      border-radius: 10px;
+      margin-bottom: 10px;
+    }
+    pre {
+      background: #222;
+      color: #0f0;
+      padding: 10px;
+      border-radius: 8px;
+      max-width: 600px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    #output {
+      margin: 10px;
+      font-size: 1.2em;
+      color: #ffcc00;
+    }
+  </style>
+</head>
+<body>
+  <h2>Boleto Scanner 📷</h2>
+  <video id="preview" autoplay playsinline></video>
+  <div id="output">Scanning...</div>
+  <pre id="data"></pre>
+</body>
+</html>
