@@ -3,9 +3,9 @@ import { validarBoleto, identificarTipoCodigo } from "@mrmgomes/boleto-utils";
 /**
  * Parses a boleto barcode or linha digitável and returns its data as JSON.
  * @param {string} code - The boleto barcode or linha digitável.
- * @returns {Promise<object>} - Parsed boleto data.
+ * @returns {boleto} - Parsed boleto data.
  */
-export async function parseBoleto(code) {
+export function parseBoleto(code) {
   if (!code || typeof code !== "string") {
     throw new Error("Invalid argument: code must be a string.");
   }
