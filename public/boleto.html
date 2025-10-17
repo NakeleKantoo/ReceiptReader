@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Boleto Scanner (Resilient)</title>
+  <title>Escanear Boleto</title>
+  <link rel="stylesheet" href="/styles.css">
   <script type="module">
     import Quagga from "https://cdn.jsdelivr.net/npm/@ericblade/quagga2/+esm";
 
@@ -79,39 +80,6 @@
         Quagga.stop();
     });
   </script>
-
-  <style>
-    body {
-      background: #0c0c0c;
-      color: #eee;
-      font-family: monospace;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      text-align: center;
-    }
-    #video {
-      width: 90%;
-      max-width: 700px;
-      border: 3px solid #ff6600;
-      border-radius: 10px;
-      margin-top: 10px;
-      position: relative;
-    }
-    pre {
-      background: #111;
-      color: #0f0;
-      padding: 12px;
-      max-width: 700px;
-      text-align: left;
-      border-radius: 10px;
-      overflow-x: auto;
-    }
-    #status {
-      color: #ffcc00;
-      margin: 10px;
-    }
-  </style>
 </head>
 <body>
   <h2>Boleto Scanner (Resilient)</h2>
