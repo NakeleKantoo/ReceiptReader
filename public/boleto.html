@@ -137,11 +137,11 @@
     }, err => {
       if (err) {
         console.error(err);
-        status.textContent = "Error starting camera.";
+        status.textContent = "Erro ao inicializar camera.";
         return;
       }
       Quagga.start();
-      status.textContent = "Scanning...";
+      status.textContent = "Escaneando...";
     });
 
     Quagga.onProcessed(result => {
@@ -164,12 +164,13 @@
       const code = result.codeResult.code.replace(/\s/g, '');
       if (code.length !== 44) {
         // optional: show short-read feedback briefly
-        status.textContent = "Partial read — keep steady...";
-        setTimeout(()=> status.textContent = "Scanning...", 800);
+        status.textContent = "Quase lá...";
+        setTimeout(()=> status.textContent = "Escaneando...", 800);
         return; // ignore short reads
       }
 
-      status.textContent = "✅ Stable code detected!";
+      status.textContent = "Detectado um boleto!";
+      let data = {}
       try {
         const res = await fetch("/api/boleto", {
           method: "POST",
@@ -178,18 +179,21 @@
         });
 
         if (!res.ok) {
-          status.textContent = `Server error: ${res.status}`;
-          console.error("Server returned", res.status);
+          status.textContent = `Erro no servidor: ${res.status}`;
+          console.error("Servidor retornou", res.status);
           return;
         }
-        const data = await res.json();
+        data = await res.json();
         output.textContent = JSON.stringify(data, null, 2);
       } catch (err) {
         console.error(err);
-        status.textContent = "Network error sending code.";
+        status.textContent = "Erro de internet.";
       } finally {
-        // stop camera so user can inspect results (remove if you want continuous scanning)
-        Quagga.stop();
+        if (data.boleto.success) {
+            Quagga.stop();
+        } else {
+            status.textContent = "Erro lendo código de barras, tentar novamente"
+        }
       }
     });
   </script>
