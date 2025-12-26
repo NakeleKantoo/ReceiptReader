@@ -30,6 +30,9 @@
     <h2>Total gasto por mês</h2>
     <canvas id="monthlyChart"></canvas>
 
+    <h2>Os 5 produtos/serviços mais caros</h2>
+    <canvas id="itemChart"></canvas>
+
     <script>
       async function loadStats() {
         // 1. Total spent per supermarket
@@ -84,7 +87,32 @@
           },
           options: { responsive: true }
         });
+
+        // 4. Top 5 most expensive items/services
+        const itemRes = await fetch("/api/stats/items");
+        const itemData = await itemRes.json();
+        //limit to top 10 items
+        itemData.sort((a,b) => b.total - a.total);
+        itemData.splice(5);
+        new Chart(document.getElementById("itemChart"), {
+          type: 'pie',
+          cutout: '50%',
+          data: {
+            labels: itemData.map(d => d.item_name),
+            datasets: [{
+              label: 'Total gasto (R$)',
+              data: itemData.map(d => d.total),
+              fill: false,
+              
+              tension: 0.3,
+              backgroundColor: ['#007bff','#28a745','#ffc107','#dc3545','#17a2b8']
+            }]
+          },
+          options: { responsive: true }
+        });
       }
+
+
 
       loadStats();
     </script>
