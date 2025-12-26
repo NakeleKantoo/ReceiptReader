@@ -5,7 +5,7 @@ import * as cheerio from "cheerio";
 export async function readNfcFromUrl(url) {
   try {
     if (!url) throw new Error("Nenhum URL passado");
-
+    url = url.trim();
     const resp = await axios.get(url);
     const compra = {};
     const supermercado = { name: "", location: "" };

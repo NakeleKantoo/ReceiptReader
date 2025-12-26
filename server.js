@@ -499,6 +499,22 @@ app.get("/api/stats/monthly", async (req, res) => {
   res.json(data);
 });
 
+// Total spent per item
+app.get("/api/stats/items", async (req, res) => {
+  const data = await db.all(`
+    SELECT i.name AS item_name, 
+    i.id AS item_id, 
+    SUM(pi.price) AS total,
+    SUM(pi.quantity) AS total_quantity
+    FROM purchase_items pi
+    JOIN items i ON pi.item_id = i.id
+    GROUP BY i.id
+    ORDER BY total DESC
+    LIMIT 50
+  `);
+  res.json(data);
+});
+
 // ---- BOLETOS ----
 app.post("/api/boleto", async (req, res) => {
   const { code } = req.body;
