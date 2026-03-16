@@ -515,6 +515,19 @@ app.get("/api/stats/items", async (req, res) => {
   res.json(data);
 });
 
+app.get("/api/stats/item/:id", async (req, res) => {
+  const { id } = req.params;
+  const data = await db.all(`
+    SELECT strftime('%Y-%m', p.date) AS month, SUM(pi.price) AS total
+    FROM purchase_items pi
+    JOIN purchases p ON pi.purchase_id = p.id
+    WHERE pi.item_id = ?
+    GROUP BY month
+    ORDER BY month
+  `, [id]);
+  res.json(data);
+});
+
 // ---- BOLETOS ----
 app.post("/api/boleto", async (req, res) => {
   const { code } = req.body;
