@@ -5,26 +5,81 @@ import cors from "cors";
 import { initDB } from "./db.js";
 import { readNfcFromUrl } from "./parse_receipt.js";
 import { parseBoleto } from "./boleto-utils-wrapper.js";
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcrypt';
+import { configDotenv } from "dotenv";
 
 const app = express();
 const PORT = 3030;
+const PASSWORDROUNDS = 15;
 
 app.use(cors());
 app.use(bodyParser.json());
-app.use(express.static("public"));
+
+
+configDotenv({quiet: true});
+
+if (!process.env.JWT_KEY) throw "É necessário um JWT_KEY em .env";
 
 let db;
 (async () => {
   db = await initDB();
+  await initiateUserDB();
 })();
 
 
-app.post('/api/upload-qr', async (req, res) => {
-  const { qr_data } = req.body;
+const initiateUserDB = async () => {
+  await db.run('DELETE FROM users;')
+  const email = process.env.email;
+  if (!email) throw "É necessário um e-mail em .env"
+  const user = await db.get('SELECT * FROM users WHERE email=?', [email]);
+  if (!user) {
+    const pass = process.env.password;
+    if (!pass) throw "É necessário uma senha em .env"
+    const encryptedPass = await bcrypt.hash(pass,PASSWORDROUNDS);
+    db.run('INSERT INTO users (email, password) VALUES (?,?)', [email,encryptedPass]);
+  }
+}
+
+app.post('/api/login', async (req, res) => {
+  const { email, password } = req.body;
+
+  const setPass = (await db.get('SELECT password FROM users WHERE email=?',[email])).password;
+  if (setPass) {
+    //check for the password and the setpass
+    const match = await bcrypt.compare(password, setPass);
+
+    if (match) {
+      const key = jwt.sign({email, verificado: true}, process.env.JWT_KEY, {expiresIn: 30*24*60*60*1000});
+      return res.status(200).json({key})
+    }
+
+  }
+  return res.status(401).send('Unauthorized');
+});
+
+const checkAuth = async (req, res, next) => {
+  const key = req.headers['authorization'];
+  try {
+    if (key.startsWith('Bearer ')) {
+      const matches = jwt.verify(key.substring(7), process.env.JWT_KEY);
+      if (matches) {
+        next();
+      }
+    }
+  } catch (error) {
+    console.log('No key', error);
+    res.status(401).send('Unauthorized');
+  }
+}
+
+
+app.post('/api/upload-qr', checkAuth, async (req, res) => {
+  const { html } = req.body;
   try {
     
-    const parsed = await readNfcFromUrl(qr_data);
-
+    const parsed = await readNfcFromUrl(html);
+    console.log(parsed)
     try {
       // 1. Supermarket
       let supermarket = await db.get("SELECT * FROM supermarkets WHERE name = ?", [parsed.supermarket.name]);
@@ -90,6 +145,7 @@ app.post('/api/upload-qr', async (req, res) => {
 
       res.json({ success: true, purchase_id });
     } catch (err) {
+      console.log(err)
       res.status(500).json({ success: false, error: 'Erro ao processar QR.' });
     }
   } catch (err) {
@@ -115,7 +171,7 @@ function parseReceiptDate(str) {
 //
 
 // Create item
-app.post("/api/items", async (req, res) => {
+app.post("/api/items", checkAuth, async (req, res) => {
   try {
     const { name } = req.body;
     if (!name) return res.status(400).json({ error: "Item name required" });
@@ -128,7 +184,7 @@ app.post("/api/items", async (req, res) => {
 });
 
 // List items
-app.get("/api/items", async (req, res) => {
+app.get("/api/items", checkAuth, async (req, res) => {
   const rows = await db.all("SELECT * FROM items");
   res.json(rows);
 });
@@ -167,7 +223,7 @@ app.delete("/api/items/:id", (req, res) => {
 //
 
 // Create alias for item
-app.post("/api/item_aliases", async (req, res) => {
+app.post("/api/item_aliases", checkAuth, async (req, res) => {
   try {
     const { item_id, alias } = req.body;
     if (!item_id || !alias) return res.status(400).json({ error: "item_id and alias required" });
@@ -180,13 +236,13 @@ app.post("/api/item_aliases", async (req, res) => {
 });
 
 // List aliases for item
-app.get("/api/item_aliases/:item_id", async (req, res) => {
+app.get("/api/item_aliases/:item_id", checkAuth, async (req, res) => {
   const rows = await db.all("SELECT * FROM item_aliases WHERE item_id = ?", [req.params.item_id]);
   res.json(rows);
 });
 
 // List aliases for item
-app.get("/api/item_aliases/", async (req, res) => {
+app.get("/api/item_aliases/", checkAuth, async (req, res) => {
   const rows = await db.all("SELECT ia.id, ia.item_id, i.name, ia.alias FROM item_aliases AS ia JOIN items AS i ON i.id = ia.item_id");
   res.json(rows);
 });
@@ -196,7 +252,7 @@ app.get("/api/item_aliases/", async (req, res) => {
 //
 
 // Create supermarket
-app.post("/api/supermarkets", async (req, res) => {
+app.post("/api/supermarkets", checkAuth, async (req, res) => {
   try {
     const { name } = req.body;
     if (!name) return res.status(400).json({ error: "Supermarket name required" });
@@ -209,13 +265,13 @@ app.post("/api/supermarkets", async (req, res) => {
 });
 
 // List supermarkets
-app.get("/api/supermarkets", async (req, res) => {
+app.get("/api/supermarkets", checkAuth, async (req, res) => {
   const rows = await db.all("SELECT * FROM supermarkets");
   res.json(rows);
 });
 
 // PUT update supermarket
-app.put("/api/supermarkets/:id", async (req, res) => {
+app.put("/api/supermarkets/:id", checkAuth, async (req, res) => {
   const { id } = req.params;
   const { name, pretty_name } = req.body;
   if (!name) return res.status(400).json({ error: "Name required" });
@@ -233,7 +289,7 @@ app.put("/api/supermarkets/:id", async (req, res) => {
 });
 
 // DELETE supermarket
-app.delete("/api/supermarkets/:id", async (req, res) => {
+app.delete("/api/supermarkets/:id", checkAuth, async (req, res) => {
   const { id } = req.params;
   try {
     const result = await db.run("DELETE FROM supermarkets WHERE id = ?", [id]);
@@ -250,7 +306,7 @@ app.delete("/api/supermarkets/:id", async (req, res) => {
 //
 
 // Create location
-app.post("/api/locations", async (req, res) => {
+app.post("/api/locations", checkAuth, async (req, res) => {
   try {
     const { supermarket_id, address } = req.body;
     if (!supermarket_id || !address) return res.status(400).json({ error: "supermarket_id and address required" });
@@ -263,13 +319,13 @@ app.post("/api/locations", async (req, res) => {
 });
 
 // List locations for a supermarket
-app.get("/api/locations/:supermarket_id", async (req, res) => {
+app.get("/api/locations/:supermarket_id", checkAuth, async (req, res) => {
   const rows = await db.all("SELECT * FROM locations WHERE supermarket_id = ?", [req.params.supermarket_id]);
   res.json(rows);
 });
 
 // List locations for a supermarket
-app.get("/api/locations/", async (req, res) => {
+app.get("/api/locations/", checkAuth, async (req, res) => {
   const rows = await db.all("SELECT locations.id, supermarkets.name AS supermarket, supermarkets.pretty_name as supermarketpn, locations.address FROM locations JOIN supermarkets ON supermarkets.id = locations.supermarket_id");
   res.json(rows);
 });
@@ -277,7 +333,7 @@ app.get("/api/locations/", async (req, res) => {
 /* ---------- PURCHASES ---------- */
 
 // Get all purchases with items
-app.get("/api/purchases", async (req, res) => {
+app.get("/api/purchases", checkAuth, async (req, res) => {
   try {
     // Get purchases with location, supermarket, payment method
     const purchases = await db.all(`
@@ -309,7 +365,7 @@ app.get("/api/purchases", async (req, res) => {
 });
 
 // Get purchases with optional filters
-app.get("/api/purchases/filter", async (req, res) => {
+app.get("/api/purchases/filter", checkAuth, async (req, res) => {
   const { from, to, name, supermarket, payment_method } = req.query;
   try {
     let query = `
@@ -358,7 +414,7 @@ app.get("/api/purchases/filter", async (req, res) => {
 
 
 // GET /api/purchases/:id  — returns a single purchase with its items
-app.get("/api/purchases/:id", async (req, res) => {
+app.get("/api/purchases/:id", checkAuth, async (req, res) => {
   const { id } = req.params;
   try {
     // purchase header (with supermarket + location + payment)
@@ -415,7 +471,7 @@ app.get("/api/purchases/:id", async (req, res) => {
 });
 
 // Create a new purchase
-app.post("/api/purchases", async (req, res) => {
+app.post("/api/purchases", checkAuth, async (req, res) => {
   const { location_id, payment_method_id, total, items } = req.body;
   if (!location_id || !payment_method_id || !total || !items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: "Missing required fields" });
@@ -454,7 +510,7 @@ app.post("/api/purchases", async (req, res) => {
 
 /* ---------- PAYMENT METHODS ---------- */
 // List all payment methods
-app.get("/api/payment_methods", async (req, res) => {
+app.get("/api/payment_methods", checkAuth, async (req, res) => {
   try {
     const rows = await db.all("SELECT * FROM payment_methods ORDER BY method");
     res.json(rows);
@@ -465,7 +521,7 @@ app.get("/api/payment_methods", async (req, res) => {
 
 // ---- STATISTICS ----
 // Total spent per supermarket
-app.get("/api/stats/supermarkets", async (req, res) => {
+app.get("/api/stats/supermarkets", checkAuth, async (req, res) => {
   const data = await db.all(`
     SELECT s.pretty_name AS supermarket, SUM(p.total) AS total
     FROM purchases p
@@ -478,7 +534,7 @@ app.get("/api/stats/supermarkets", async (req, res) => {
 });
 
 // Total spent per payment method
-app.get("/api/stats/payment_methods", async (req, res) => {
+app.get("/api/stats/payment_methods", checkAuth, async (req, res) => {
   const data = await db.all(`
     SELECT pm.method, SUM(p.total) AS total
     FROM purchases p
@@ -489,7 +545,7 @@ app.get("/api/stats/payment_methods", async (req, res) => {
 });
 
 // Total spent per month
-app.get("/api/stats/monthly", async (req, res) => {
+app.get("/api/stats/monthly", checkAuth, async (req, res) => {
   const data = await db.all(`
     SELECT strftime('%Y-%m', p.date) AS month, SUM(p.total) AS total
     FROM purchases p
@@ -500,7 +556,7 @@ app.get("/api/stats/monthly", async (req, res) => {
 });
 
 // Total spent per item
-app.get("/api/stats/items", async (req, res) => {
+app.get("/api/stats/items", checkAuth, async (req, res) => {
   const data = await db.all(`
     SELECT i.name AS item_name, 
     i.id AS item_id, 
@@ -515,7 +571,7 @@ app.get("/api/stats/items", async (req, res) => {
   res.json(data);
 });
 
-app.get("/api/stats/item/:id", async (req, res) => {
+app.get("/api/stats/item/:id", checkAuth, async (req, res) => {
   const { id } = req.params;
   const data = await db.all(`
     SELECT strftime('%Y-%m', p.date) AS month, SUM(pi.price) AS total
@@ -529,7 +585,7 @@ app.get("/api/stats/item/:id", async (req, res) => {
 });
 
 // ---- BOLETOS ----
-app.post("/api/boleto", async (req, res) => {
+app.post("/api/boleto", checkAuth, async (req, res) => {
   const { code } = req.body;
   const boleto = parseBoleto(code);
   res.status(200).json({success:true, boleto:boleto});
@@ -543,11 +599,10 @@ app.post("/api/boleto", async (req, res) => {
 
 /* ---------- FALLBACK ---------- */
 // If user goes to "/", serve index.html
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
-});
+app.use(checkAuth)
+app.use(express.static("public"));
 
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running at http://localhost:${PORT}`);
 });

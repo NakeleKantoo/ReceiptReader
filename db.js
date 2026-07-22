@@ -63,6 +63,12 @@ CREATE TABLE IF NOT EXISTS purchase_items (
     FOREIGN KEY (item_id) REFERENCES items(id)
 );
 
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL,
+    password TEXT NOT NULL
+);
+
 INSERT OR IGNORE INTO payment_methods (method) VALUES ('Dinheiro'), ('Credito'), ('Debito'), ('Pix');
   `);
 

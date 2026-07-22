@@ -2,11 +2,11 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
 
-export async function readNfcFromUrl(url) {
+export async function readNfcFromUrl(html) {
   try {
-    if (!url) throw new Error("Nenhum URL passado");
-    url = url.trim();
-    const resp = await axios.get(url);
+    // if (!url) throw new Error("Nenhum URL passado");
+    // url = url.trim();
+    // const resp = await axios.get(url);
     const compra = {};
     const supermercado = { name: "", location: "" };
     let payment_method = "";
@@ -18,7 +18,7 @@ export async function readNfcFromUrl(url) {
     const keys = { "Qtde total de itens": "qtd", "UN": "unit", "Valor total R$": "price" };
 
     if (resp.status === 200) {
-      const $ = cheerio.load(resp.data);
+      const $ = cheerio.load(html);
 
       // Supermarket name and location
       const toptable = $("table.table.text-center");
