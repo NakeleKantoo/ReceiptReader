@@ -15,6 +15,7 @@ import { env } from '../env.ts';
 import { asyncHandler, badRequest, conflict, forbidden, notFound } from '../lib/errors.ts';
 import { newId, randomIndex } from '../lib/ids.ts';
 import { hashSecret } from '../lib/secret.ts';
+import { removeMember, upsertMember } from '../lib/members.ts';
 import {
   assertSecretIsFree,
   countMembers,
@@ -70,6 +71,7 @@ export function householdRoutes(db: DB, authRequired: RequestHandler): Router {
           `INSERT INTO users (id, household_id, name, secret_hash, role, created_at)
            VALUES (?, ?, ?, ?, 'admin', ?)`,
         ).run(userId, householdId, name, secretHash, now);
+        upsertMember(db, householdId, { id: userId, name, role: 'admin', createdAt: now });
       })();
 
       const session = createSession(db, userId, deviceName);
@@ -106,10 +108,12 @@ export function householdRoutes(db: DB, authRequired: RequestHandler): Router {
 
       const userId = newId();
       const now = Date.now();
+      const secretHash = await hashSecret(normalized);
       db.prepare(
         `INSERT INTO users (id, household_id, name, secret_hash, role, created_at)
          VALUES (?, ?, ?, ?, 'member', ?)`,
-      ).run(userId, household.id, name, await hashSecret(normalized), now);
+      ).run(userId, household.id, name, secretHash, now);
+      upsertMember(db, household.id, { id: userId, name, role: 'member', createdAt: now });
 
       const session = createSession(db, userId, deviceName);
       res.status(201).json({
@@ -176,6 +180,11 @@ export function householdRoutes(db: DB, authRequired: RequestHandler): Router {
       if (patch.name) db.prepare('UPDATE users SET name = ? WHERE id = ?').run(patch.name, id);
       if (patch.role) db.prepare('UPDATE users SET role = ? WHERE id = ?').run(patch.role, id);
 
+      const updated = db
+        .prepare('SELECT id, name, role, created_at AS createdAt FROM users WHERE id = ?')
+        .get(id) as { id: string; name: string; role: UserRole; createdAt: number };
+      upsertMember(db, auth.householdId, updated);
+
       res.json({ ok: true, members: listMembers(db, auth.householdId) });
     }),
   );
@@ -209,6 +218,7 @@ export function householdRoutes(db: DB, authRequired: RequestHandler): Router {
       db.transaction(() => {
         db.prepare('UPDATE users SET deleted_at = ? WHERE id = ?').run(now, id);
         db.prepare('UPDATE sessions SET revoked_at = ? WHERE user_id = ?').run(now, id);
+        removeMember(db, auth.householdId, id);
       })();
 
       res.json({ ok: true, members: listMembers(db, auth.householdId) });

@@ -12,6 +12,7 @@ import {
 import type { DB } from '../db/index.ts';
 import { nextRev } from '../db/index.ts';
 import { asyncHandler, conflict } from '../lib/errors.ts';
+import { memberIds } from '../lib/members.ts';
 
 /** Linhas por tabela em cada pull. */
 const PAGE_LIMIT = 500;
@@ -123,6 +124,8 @@ export function syncRoutes(db: DB): Router {
           ? (body.changes as Record<string, unknown>)
           : {};
 
+      const validMembers = memberIds(db, auth.householdId);
+
       const payload = db.transaction(() => {
         let pushed = 0;
         const rejected: { table: string; id: string | null; reason: string }[] = [];
@@ -143,8 +146,10 @@ export function syncRoutes(db: DB): Router {
               const row: SyncRow = { ...parsed.row, rev: nextRev(db) };
 
               if (spec.name === 'movements') {
-                // a movimentação é imutável: o autor vem da sessão, não do cliente
-                row.user_id = typeof row.user_id === 'string' && row.user_id ? row.user_id : auth.userId;
+                // autor: o do payload se for da casa (registro feito em outro
+                // aparelho), senão quem está sincronizando agora
+                const author = typeof row.user_id === 'string' ? row.user_id : null;
+                row.user_id = author && validMembers.has(author) ? author : auth.userId;
               }
 
               try {

@@ -300,6 +300,31 @@ CREATE INDEX IF NOT EXISTS loans_household_idx ON loans(household_id, rev);
 CREATE INDEX IF NOT EXISTS attachments_household_idx ON attachments(household_id, rev);
 `,
   },
+  {
+    version: 3,
+    /**
+     * F3: a timeline de movimentações precisa do nome de quem fez. `users`
+     * guarda hash de senha e nunca sai do servidor, então o que sincroniza é
+     * `members` — pessoas da casa, sem segredo.
+     */
+    sql: `
+CREATE TABLE IF NOT EXISTS members (
+  id TEXT PRIMARY KEY,
+  household_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'member',
+  avatar_path TEXT,
+  deleted_at INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  rev INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS members_household_idx ON members(household_id, rev);
+
+INSERT OR IGNORE INTO members (id, household_id, name, role, created_at, updated_at, rev)
+SELECT id, household_id, name, role, created_at, created_at, 0 FROM users;
+`,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;

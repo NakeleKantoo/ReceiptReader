@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth';
 import { useSync } from '@/lib/useSync';
 import { useFocusReload } from '@/lib/useFocusReload';
-import { countPendingChanges, countRows, countTotalValueCents } from '@/db/repo';
+import { countPendingChanges, countRows, countTotalValueCents, lowStockItems } from '@/db/repo';
 import { greeting, relativeTime } from '@/lib/format';
 import { AppText, Badge, Button, Card, Screen } from '@/components/ui';
 import { formatBRL } from '@quanto/core';
@@ -26,6 +26,7 @@ export default function DashboardScreen() {
   const palette = usePalette();
   const sync = useSync();
 
+  const [lowStock, setLowStock] = useState<{ id: string; name: string }[]>([]);
   const [counts, setCounts] = useState<Counts>({
     locations: 0,
     categories: 0,
@@ -44,6 +45,7 @@ export default function DashboardScreen() {
       pending: countPendingChanges(),
       valueCents: countTotalValueCents(),
     });
+    setLowStock(lowStockItems().map((item) => ({ id: item.id, name: item.name })));
   }, []);
 
   useFocusReload(reload);
@@ -92,6 +94,31 @@ export default function DashboardScreen() {
           </View>
         ))}
       </View>
+
+      {lowStock.length > 0 ? (
+        <Card>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <AppText variant="subtitle">Para comprar</AppText>
+            <Badge text={`${lowStock.length}`} tone="warning" />
+          </View>
+          {lowStock.slice(0, 5).map((item) => (
+            <Pressable
+              key={item.id}
+              onPress={() => router.push(`/item/${item.id}`)}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 6 }}
+            >
+              <Ionicons name="cart-outline" size={16} color={palette.warning} />
+              <AppText style={{ flex: 1 }} numberOfLines={1}>
+                {item.name}
+              </AppText>
+              <Ionicons name="chevron-forward" size={14} color={palette.textMuted} />
+            </Pressable>
+          ))}
+          {lowStock.length > 5 ? (
+            <AppText variant="caption">e mais {lowStock.length - 5}…</AppText>
+          ) : null}
+        </Card>
+      ) : null}
 
       {counts.locations === 0 ? (
         <Card>

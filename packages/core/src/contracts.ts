@@ -91,6 +91,22 @@ export const movementTypeSchema = z.enum([
   'revert',
 ]);
 
+export const MOVEMENT_LABEL: Record<z.infer<typeof movementTypeSchema>, string> = {
+  in: 'Entrada',
+  consume: 'Consumo',
+  checkout: 'Retirada',
+  checkin: 'Devolução',
+  adjust: 'Ajuste',
+  transfer: 'Transferência',
+  discard: 'Descarte',
+  maintenance: 'Manutenção',
+  revert: 'Desfeito',
+};
+
+/** Movimento que soma (entrada) ou subtrai (saída) no saldo do item. */
+export const INBOUND_TYPES = new Set(['in', 'checkin']);
+export const OUTBOUND_TYPES = new Set(['consume', 'discard', 'checkout']);
+
 export const ASSET_STATUS_LABEL: Record<z.infer<typeof assetStatusSchema>, string> = {
   available: 'disponível',
   in_use: 'em uso',

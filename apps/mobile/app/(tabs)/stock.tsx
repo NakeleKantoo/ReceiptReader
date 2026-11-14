@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import { formatQty, type ItemKind } from '@quanto/core';
 import { useSync } from '@/lib/useSync';
 import { useFocusReload } from '@/lib/useFocusReload';
-import { listItems, type ItemRow } from '@/db/repo';
+import { listItems, stockFor, type ItemRow } from '@/db/repo';
 import { AppText, Badge, Button, Chip, ChipRow, EmptyState, Screen, Segmented } from '@/components/ui';
 import { radius, spacing, usePalette } from '@/theme';
 
@@ -141,16 +141,28 @@ export default function StockScreen() {
                   </AppText>
                 </View>
 
-                {item.kind === 'durable' ? (
-                  <Badge
-                    text={`${item.assetCount} ${item.assetCount === 1 ? 'un' : 'un'}`}
-                    tone={item.assetCount > 0 ? 'neutral' : 'warning'}
-                  />
-                ) : (
-                  <AppText variant="caption">
-                    {item.minQty > 0 ? `mín ${formatQty(item.minQty, item.baseUnit)}` : '—'}
-                  </AppText>
-                )}
+                {(() => {
+                  const stock = stockFor(item.id);
+                  const low = item.minQty > 0 && stock.quantity <= item.minQty;
+
+                  if (item.kind === 'durable') {
+                    return (
+                      <Badge
+                        text={`${stock.quantity} un`}
+                        tone={stock.quantity > 0 ? 'neutral' : 'warning'}
+                      />
+                    );
+                  }
+
+                  return (
+                    <View style={{ alignItems: 'flex-end', gap: 2 }}>
+                      <AppText variant="caption" color={low ? palette.warning : undefined}>
+                        {formatQty(stock.quantity, item.baseUnit)}
+                      </AppText>
+                      {low ? <Badge text="comprar" tone="warning" /> : null}
+                    </View>
+                  );
+                })()}
 
                 <Ionicons name="chevron-forward" size={16} color={palette.textMuted} />
               </Pressable>

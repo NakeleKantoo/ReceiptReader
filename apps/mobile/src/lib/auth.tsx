@@ -16,7 +16,7 @@ import {
   type HouseholdSummary,
   type ServerStatus,
 } from '@/lib/api';
-import { setCurrentHousehold } from '@/db/repo';
+import { setCurrentHousehold, setCurrentUser } from '@/db/repo';
 import { rememberServerProtocol } from '@/lib/sync';
 import {
   SUGGESTED_SERVER_URL,
@@ -113,6 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const refreshed: Session = { ...session, user: me.user, household: me.household };
       await writeSession(refreshed);
       setCurrentHousehold(refreshed.user.householdId);
+      setCurrentUser(refreshed.user.id);
       if (mounted.current) setState({ status: 'authenticated', session: refreshed });
     } catch (error) {
       if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
@@ -144,7 +145,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (mounted.current) setServerUrl(storedUrl);
 
       const session = await readSession();
-      if (session) setCurrentHousehold(session.user.householdId);
+      if (session) {
+        setCurrentHousehold(session.user.householdId);
+        setCurrentUser(session.user.id);
+      }
 
       if (session) {
         if (hasHardware && enrolled) {
@@ -223,6 +227,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const adopt = useCallback(async (session: Session) => {
     await writeSession(session);
     setCurrentHousehold(session.user.householdId);
+    setCurrentUser(session.user.id);
     setState({ status: 'authenticated', session });
   }, []);
 

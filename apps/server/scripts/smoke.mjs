@@ -326,6 +326,57 @@ const run = async () => {
   check('movimentação é append-only (reenvio não duplica)', sameMovement.length === 1, sameMovement.length);
   check('movimentação ganha o autor da sessão', sameMovement[0]?.user_id === bootstrap.body?.user?.id, sameMovement[0]);
 
+  console.log('\nF3: pessoas e autoria');
+  const membersPull = await api('/api/sync', {
+    method: 'POST',
+    token: adminToken,
+    body: syncBody(),
+  });
+  const syncedMembers = membersPull.body?.changes?.members ?? [];
+  check('membros sincronizam', syncedMembers.length === 2, syncedMembers.map((m) => m.name));
+  check('membro tem nome e papel', syncedMembers.every((m) => m.name && m.role), syncedMembers);
+  check('membros não carregam hash de senha', !JSON.stringify(syncedMembers).includes('scrypt$'));
+
+  const memberUserId = join.body?.user?.id;
+  const attributed = {
+    id: crypto.randomUUID(),
+    item_id: itemId,
+    delta: -100,
+    type: 'consume',
+    user_id: memberUserId,
+    created_at: now,
+  };
+  const forged = {
+    id: crypto.randomUUID(),
+    item_id: itemId,
+    delta: -50,
+    type: 'consume',
+    user_id: 'pessoa-de-fora',
+    created_at: now,
+  };
+  await api('/api/sync', {
+    method: 'POST',
+    token: adminToken,
+    body: syncBody({ movements: [attributed, forged] }),
+  });
+
+  const authorship = await api('/api/sync', {
+    method: 'POST',
+    token: adminToken,
+    body: syncBody(),
+  });
+  const rows = authorship.body?.changes?.movements ?? [];
+  check(
+    'autor de outro membro da casa é preservado',
+    rows.find((row) => row.id === attributed.id)?.user_id === memberUserId,
+    rows.find((row) => row.id === attributed.id),
+  );
+  check(
+    'user_id de fora da casa é trocado pelo da sessão',
+    rows.find((row) => row.id === forged.id)?.user_id === bootstrap.body?.user?.id,
+    rows.find((row) => row.id === forged.id),
+  );
+
   const orphan = await api('/api/sync', {
     method: 'POST',
     token: adminToken,

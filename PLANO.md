@@ -5,7 +5,7 @@
 > etiquetas QR, contas por membro da família e histórico por unidade física.
 >
 > **Status:** plano final (v3). v1 (web) e v2 (multi-plataforma) descartadas.
-> **F0 ✅ · F1 ✅ · F2 ✅** (catálogo, bens, scanner de código de barras e QR, etiqueta na tela). Próxima: F3 (movimentações).
+> **F0 ✅ · F1 ✅ · F2 ✅ · F3 ✅** (catálogo, bens, scanner, movimentações com saldo e histórico). Próxima: F4 (etiquetas e impressão).
 > App e servidor negociam `PROTOCOL_VERSION` (hoje 2): versão diferente falha com mensagem clara.
 
 ---

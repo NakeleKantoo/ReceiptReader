@@ -70,6 +70,18 @@ export const SYNC_TABLES: readonly SyncTableSpec[] = [
     defaults: { sort_order: 0 },
   },
   {
+    name: 'members',
+    columns: {
+      id: 'text',
+      household_id: 'text',
+      name: 'text',
+      role: 'text',
+      avatar_path: 'text',
+      ...syncTail,
+    },
+    required: ['id', 'household_id', 'name', 'role', 'created_at', 'updated_at'],
+  },
+  {
     name: 'items',
     columns: {
       id: 'text',

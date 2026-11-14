@@ -157,9 +157,10 @@ DATABASE_PATH=./data/smoke.db PORT=3999 npm start &
 npm run smoke -- http://127.0.0.1:3999
 ```
 
-53 asserções: bootstrap, convite, login por PIN, unicidade do PIN, sync entre dois membros, LWW,
-tombstones, append-only das movimentações, FK inválida recusada com motivo, protocolo incompatível,
-isolamento por casa, troca de PIN, logout e rate limit.
+58 asserções: bootstrap, convite, login por PIN, unicidade do PIN, sync entre dois membros, LWW,
+tombstones, append-only das movimentações, autoria preservada/forjada, membros sincronizados sem
+hash de senha, FK inválida recusada com motivo, protocolo incompatível, isolamento por casa,
+troca de PIN, logout e rate limit.
 
 ---
 
@@ -224,6 +225,7 @@ e é ele que identifica a conta:
 | Docker não-root + healthcheck | ✅ |
 | **F1:** catálogo de itens, categorias, bens, códigos de barras e apelidos | ✅ |
 | **F2:** scanner de código de barras/QR, etiqueta QR na tela e consulta de produto | ✅ |
+| **F3:** movimentações, saldo derivado, histórico por item/bem e desfazer | ✅ |
 | F4: etiquetas QR + impressão | ⏳ |
 
 ### F1 — catálogo
@@ -255,6 +257,23 @@ Fora da F1 (próximas fases): quantidade em estoque e histórico (F3), scanner (
 
 Contagem por local e movimentação de estoque continuam fora: entram na **F3**, porque hoje não há
 para onde gravar a quantidade.
+
+### F3 — saldo e histórico
+
+- **Saldo derivado**: consumível é `SUM(delta)` das movimentações; durável é a contagem de bens
+  (cada unidade é uma linha em `assets`). Nada de coluna `qty` editável.
+- **Ações** no item: entrada, consumo, ajuste (você conta, o app calcula a diferença), descarte e
+  transferência (par de movimentos com o mesmo instante: o total não muda, o local sim).
+- **Quantidade amigável**: digite em kg/L/m e o app converte para a unidade base (g/ml/mm).
+- **Histórico** com autor, local, data e observação; **desfazer** insere a linha inversa
+  (`reverses_id`) — o ledger continua append-only e auditável.
+- **Bens**: retirar/devolver grava quem levou, muda `status` e `holder_user_id`; a timeline do bem é
+  o histórico de uso.
+- **Dashboard** mostra "para comprar" (itens abaixo do mínimo) e o **Estoque** mostra o saldo de
+  cada item com selo de compra.
+
+Regra de ouro: o servidor nunca aceita `user_id` de quem não é da casa — o autor do movimento é
+validado contra `members` e, se inválido, vira quem sincronizou.
 
 ### Checklist de aceite da F0 (manual)
 

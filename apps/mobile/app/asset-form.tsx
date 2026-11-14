@@ -9,12 +9,18 @@ import {
 } from '@quanto/core';
 import { useSync } from '@/lib/useSync';
 import {
+  checkinAsset,
+  checkoutAsset,
   createAsset,
   getAsset,
   getItem,
   listLocations,
+  listMovements,
+  revertMovement,
   updateAsset,
+  type MovementRow,
 } from '@/db/repo';
+import { MovementList } from '@/components/movements';
 import { isValidDateString, maskDateInput } from '@/lib/format';
 import {
   AppText,
@@ -22,10 +28,10 @@ import {
   Card,
   Chip,
   ChipRow,
+  Divider,
   Field,
   Screen,
   SectionTitle,
-  Segmented,
 } from '@/components/ui';
 import { spacing } from '@/theme';
 
@@ -60,6 +66,13 @@ export default function AssetFormScreen() {
   const [warrantyUntil, setWarrantyUntil] = useState(existing?.warrantyUntil ?? '');
   const [notes, setNotes] = useState(existing?.notes ?? '');
   const [error, setError] = useState<string | null>(null);
+  const [movements, setMovements] = useState<MovementRow[]>(() =>
+    existing ? listMovements({ assetId: existing.id, limit: 20 }) : [],
+  );
+
+  const reloadMovements = () => {
+    if (existing) setMovements(listMovements({ assetId: existing.id, limit: 20 }));
+  };
 
   if (!item) {
     return (
@@ -186,6 +199,54 @@ export default function AssetFormScreen() {
         <AppText variant="caption" color="#B3261E">
           {error}
         </AppText>
+      ) : null}
+
+      {editingId ? (
+        <Card>
+          <SectionTitle>Quem está com ele</SectionTitle>
+          <AppText variant="caption">
+            {status === 'in_use'
+              ? 'Retirado — o último movimento mostra quem levou.'
+              : 'Disponível na casa.'}
+          </AppText>
+          <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+            <Button
+              title="Retirar"
+              style={{ flex: 1 }}
+              variant={status === 'in_use' ? 'ghost' : 'primary'}
+              onPress={() => {
+                checkoutAsset(editingId);
+                reloadMovements();
+                setStatus('in_use');
+                void sync.run();
+              }}
+            />
+            <Button
+              title="Devolver"
+              style={{ flex: 1 }}
+              variant="secondary"
+              onPress={() => {
+                checkinAsset(editingId, locationId);
+                reloadMovements();
+                setStatus('available');
+                void sync.run();
+              }}
+            />
+          </View>
+
+          <Divider />
+          <SectionTitle>Histórico do bem</SectionTitle>
+          <MovementList
+            movements={movements}
+            unit="un"
+            emptyText="Sem retiradas registradas."
+            onRevert={(movement) => {
+              revertMovement(movement.id);
+              reloadMovements();
+              void sync.run();
+            }}
+          />
+        </Card>
       ) : null}
 
       <Button title={editingId ? 'Salvar' : 'Adicionar unidade'} onPress={submit} />

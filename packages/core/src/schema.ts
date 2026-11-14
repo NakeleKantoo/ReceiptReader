@@ -46,6 +46,15 @@ export type Session = {
   revokedAt: number | null;
 };
 
+/** Pessoa da casa, do jeito que o app precisa: sem hash de senha. */
+export type Member = SyncFields & {
+  id: string;
+  householdId: string;
+  name: string;
+  role: UserRole;
+  avatarPath: string | null;
+};
+
 export type Category = SyncFields & {
   id: string;
   householdId: string;

@@ -15,10 +15,19 @@ import { serverNow } from '@/lib/sync';
 import { newId } from '@/lib/id';
 
 const HOUSEHOLD_KEY = 'household_id';
+const USER_KEY = 'user_id';
 
 /** Gravado no login: toda linha nova precisa do escopo da casa. */
 export function setCurrentHousehold(householdId: string): void {
   setSetting(HOUSEHOLD_KEY, householdId);
+}
+
+export function setCurrentUser(userId: string): void {
+  setSetting(USER_KEY, userId);
+}
+
+export function getCurrentUser(): string | null {
+  return getSetting(USER_KEY);
 }
 
 export function getCurrentHousehold(): string {
@@ -494,6 +503,354 @@ export function deleteAsset(id: string): void {
     now,
     id,
   );
+}
+
+// ─────────────────────────────────────────────── pessoas
+
+export type MemberRow = { id: string; name: string; role: 'admin' | 'member' };
+
+export function listMembers(): MemberRow[] {
+  return getDatabase().getAllSync<Row>(
+    'SELECT id, name, role FROM members WHERE deleted_at IS NULL ORDER BY name COLLATE NOCASE',
+  ) as unknown as MemberRow[];
+}
+
+// ─────────────────────────────────────────────── movimentações
+
+export type MovementType =
+  | 'in'
+  | 'consume'
+  | 'checkout'
+  | 'checkin'
+  | 'adjust'
+  | 'transfer'
+  | 'discard'
+  | 'maintenance'
+  | 'revert';
+
+export type MovementRow = {
+  id: string;
+  itemId: string;
+  assetId: string | null;
+  lotId: string | null;
+  locationId: string | null;
+  delta: number;
+  type: MovementType;
+  userId: string | null;
+  userName: string | null;
+  locationName: string | null;
+  note: string | null;
+  reversesId: string | null;
+  createdAt: number;
+  /** já existe um movimento que desfaz este */
+  reverted: boolean;
+};
+
+const MOVEMENT_SELECT = `
+  SELECT m.*, u.name AS user_name, l.name AS location_name,
+         EXISTS (SELECT 1 FROM movements r WHERE r.reverses_id = m.id) AS reverted
+  FROM movements m
+  LEFT JOIN members u ON u.id = m.user_id
+  LEFT JOIN locations l ON l.id = m.location_id
+`;
+
+function toMovement(row: Row): MovementRow {
+  return {
+    id: str(row.id),
+    itemId: str(row.item_id),
+    assetId: strOrNull(row.asset_id),
+    lotId: strOrNull(row.lot_id),
+    locationId: strOrNull(row.location_id),
+    delta: num(row.delta),
+    type: str(row.type) as MovementType,
+    userId: strOrNull(row.user_id),
+    userName: strOrNull(row.user_name),
+    locationName: strOrNull(row.location_name),
+    note: strOrNull(row.note),
+    reversesId: strOrNull(row.reverses_id),
+    createdAt: num(row.created_at),
+    reverted: num(row.reverted) === 1,
+  };
+}
+
+export function listMovements(filter: { itemId?: string; assetId?: string; limit?: number } = {}): MovementRow[] {
+  const limit = filter.limit ?? 50;
+  const conditions: string[] = [];
+  const params: (string | number)[] = [];
+
+  if (filter.itemId) {
+    conditions.push('m.item_id = ?');
+    params.push(filter.itemId);
+  }
+  if (filter.assetId) {
+    conditions.push('m.asset_id = ?');
+    params.push(filter.assetId);
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  const rows = getDatabase().getAllSync<Row>(
+    `${MOVEMENT_SELECT} ${where} ORDER BY m.created_at DESC, m.id DESC LIMIT ?`,
+    ...params,
+    limit,
+  );
+  return rows.map(toMovement);
+}
+
+export type MovementInput = {
+  itemId: string;
+  delta: number;
+  type: MovementType;
+  locationId?: string | null;
+  assetId?: string | null;
+  note?: string | null;
+  reversesId?: string | null;
+  /** data explícita (usado ao transferir: par de movimentos com o mesmo instante) */
+  createdAt?: number;
+};
+
+function insertMovement(input: MovementInput): string {
+  const id = newId();
+  getDatabase().runSync(
+    `INSERT INTO movements
+       (id, household_id, item_id, asset_id, lot_id, location_id, delta, type, user_id, note, reverses_id, created_at, rev)
+     VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, 0)`,
+    id,
+    getCurrentHousehold(),
+    input.itemId,
+    input.assetId ?? null,
+    input.locationId ?? null,
+    input.delta,
+    input.type,
+    getCurrentUser(),
+    input.note?.trim() || null,
+    input.reversesId ?? null,
+    input.createdAt ?? serverNow(),
+  );
+  return id;
+}
+
+/** Saída para consumo/descarte: delta sempre negativo. */
+export function registerMovement(input: {
+  itemId: string;
+  type: MovementType;
+  amount: number;
+  locationId?: string | null;
+  assetId?: string | null;
+  note?: string | null;
+}): string {
+  const amount = Math.abs(input.amount);
+  const negative = input.type === 'consume' || input.type === 'discard' || input.type === 'checkout';
+  return insertMovement({ ...input, delta: negative ? -amount : amount });
+}
+
+/** Transferência: par de movimentos com o mesmo instante (o total não muda). */
+export function transferStock(input: {
+  itemId: string;
+  amount: number;
+  fromLocationId: string;
+  toLocationId: string;
+  note?: string | null;
+}): void {
+  const amount = Math.abs(input.amount);
+  const at = serverNow();
+  const db = getDatabase();
+
+  db.withTransactionSync(() => {
+    insertMovement({
+      itemId: input.itemId,
+      delta: -amount,
+      type: 'transfer',
+      locationId: input.fromLocationId,
+      note: input.note,
+      createdAt: at,
+    });
+    insertMovement({
+      itemId: input.itemId,
+      delta: amount,
+      type: 'transfer',
+      locationId: input.toLocationId,
+      note: input.note,
+      createdAt: at + 1,
+    });
+  });
+}
+
+/** Ajuste: o delta é a diferença entre o contado e o saldo atual. */
+export function adjustStock(input: {
+  itemId: string;
+  counted: number;
+  locationId?: string | null;
+  note?: string | null;
+}): number {
+  const current = stockFor(input.itemId).quantity;
+  const delta = input.counted - current;
+  if (delta === 0) return 0;
+
+  insertMovement({
+    itemId: input.itemId,
+    delta,
+    type: 'adjust',
+    locationId: input.locationId ?? null,
+    note: input.note,
+  });
+  return delta;
+}
+
+export function isReverted(movementId: string): boolean {
+  const row = getDatabase().getFirstSync<Row>(
+    'SELECT id FROM movements WHERE reverses_id = ? LIMIT 1',
+    movementId,
+  );
+  return Boolean(row);
+}
+
+/**
+ * Desfazer não apaga: insere a linha inversa apontando para a original.
+ * Assim o histórico continua auditável e o sync segue append-only.
+ */
+export function revertMovement(movementId: string): void {
+  const row = getDatabase().getFirstSync<Row>('SELECT * FROM movements WHERE id = ?', movementId);
+  if (!row) throw new Error('Movimentação não encontrada');
+
+  if (row.reverses_id) throw new Error('Não é possível desfazer um desfazimento');
+  if (isReverted(movementId)) throw new Error('Essa movimentação já foi desfeita');
+
+  const movement = toMovement(row);
+
+  insertMovement({
+    itemId: movement.itemId,
+    delta: -movement.delta,
+    type: 'revert',
+    locationId: movement.locationId,
+    assetId: movement.assetId,
+    note: `desfaz ${movement.type}`,
+    reversesId: movement.id,
+  });
+
+  // retirada/devolução de bem também mexe no estado da unidade
+  if (movement.assetId) {
+    if (movement.type === 'checkout') syncAssetFromMovements(movement.assetId);
+    if (movement.type === 'checkin') syncAssetFromMovements(movement.assetId);
+  }
+}
+
+// ─────────────────────────────────────────────── saldo
+
+export type StockInfo = {
+  /** inteiro na unidade base (consumível) ou contagem de bens (durável) */
+  quantity: number;
+  byLocation: { locationId: string | null; locationName: string | null; quantity: number }[];
+};
+
+/**
+ * Consumível: saldo = soma dos movimentos. Durável: saldo = unidades físicas
+ * existentes (cada bem é uma linha em `assets`).
+ */
+export function stockFor(itemId: string): StockInfo {
+  const item = getItem(itemId);
+
+  if (item?.kind === 'durable') {
+    const rows = getDatabase().getAllSync<Row>(
+      `SELECT location_id, COUNT(*) AS total
+       FROM assets WHERE item_id = ? AND deleted_at IS NULL AND status != 'disposed'
+       GROUP BY location_id`,
+      itemId,
+    );
+
+    return {
+      quantity: rows.reduce((total, row) => total + num(row.total), 0),
+      byLocation: rows.map((row) => ({
+        locationId: strOrNull(row.location_id),
+        locationName: null,
+        quantity: num(row.total),
+      })),
+    };
+  }
+
+  const rows = getDatabase().getAllSync<Row>(
+    `SELECT m.location_id, l.name AS location_name, SUM(m.delta) AS total
+     FROM movements m
+     LEFT JOIN locations l ON l.id = m.location_id
+     WHERE m.item_id = ?
+     GROUP BY m.location_id`,
+    itemId,
+  );
+
+  return {
+    quantity: rows.reduce((total, row) => total + num(row.total), 0),
+    byLocation: rows
+      .map((row) => ({
+        locationId: strOrNull(row.location_id),
+        locationName: strOrNull(row.location_name),
+        quantity: num(row.total),
+      }))
+      .filter((entry) => entry.quantity !== 0),
+  };
+}
+
+export function lowStockItems(): ItemRow[] {
+  return listItems().filter((item) => item.kind === 'consumable' && item.minQty > 0 && stockFor(item.id).quantity <= item.minQty);
+}
+
+/** Última movimentação de um bem, para saber quem está com ele. */
+export function lastAssetMovement(assetId: string): MovementRow | null {
+  const [movement] = listMovements({ assetId, limit: 1 });
+  return movement ?? null;
+}
+
+/** Recalcula status/dono do bem a partir da timeline (retirada sem devolução = em uso). */
+export function syncAssetFromMovements(assetId: string): void {
+  const movement = lastAssetMovement(assetId);
+  if (!movement) return;
+
+  const asset = getAsset(assetId);
+  if (!asset) return;
+
+  const holder = movement.type === 'checkout' || movement.type === 'checkin' ? movement.userId : asset.holderUserId;
+  const status =
+    movement.type === 'checkout'
+      ? 'in_use'
+      : movement.type === 'checkin'
+        ? 'available'
+        : asset.status;
+
+  getDatabase().runSync(
+    'UPDATE assets SET status = ?, holder_user_id = ?, updated_at = ?, rev = 0 WHERE id = ?',
+    status,
+    movement.type === 'checkin' ? null : holder,
+    serverNow(),
+    assetId,
+  );
+}
+
+export function checkoutAsset(assetId: string, note?: string | null): void {
+  const asset = getAsset(assetId);
+  if (!asset) throw new Error('Bem não encontrado');
+
+  insertMovement({
+    itemId: asset.itemId,
+    assetId,
+    delta: -1,
+    type: 'checkout',
+    locationId: asset.locationId,
+    note,
+  });
+  syncAssetFromMovements(assetId);
+}
+
+export function checkinAsset(assetId: string, locationId?: string | null, note?: string | null): void {
+  const asset = getAsset(assetId);
+  if (!asset) throw new Error('Bem não encontrado');
+
+  insertMovement({
+    itemId: asset.itemId,
+    assetId,
+    delta: 1,
+    type: 'checkin',
+    locationId: locationId ?? asset.locationId,
+    note,
+  });
+  syncAssetFromMovements(assetId);
 }
 
 // ─────────────────────────────────────────────── contadores
