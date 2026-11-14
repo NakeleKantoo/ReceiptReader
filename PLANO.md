@@ -58,13 +58,13 @@
 |---|---|
 | Runtime | Node 22 + Express 5 |
 | Banco | `better-sqlite3` (WAL) — arquivo único, backup trivial |
-| ORM | **`drizzle-orm`** — mesmo schema no app e no server |
+| Persistência | **SQL puro + `packages/core`** com DDL compartilhado e tipos TS (Drizzle descartado: viraria 2ª fonte de verdade) |
 | Validação | `zod` (compartilhado) |
 | Senha | `node:crypto` **scrypt** (sem build nativo) |
 | TLS | Reverse proxy já existente + Let's Encrypt no subdomínio |
 | Deploy | `docker-compose.yml` |
 
-> **`packages/core`**: schema Drizzle + Zod + `units.ts` + `money.ts` + regras de negócio.
+  > **`packages/core`**: DDL em SQL puro (roda igual no `expo-sqlite` e no `better-sqlite3`) + Zod + `units.ts` + `money.ts`.
 > Importado pelo app (`expo-sqlite`) e pelo server (`better-sqlite3`). Regra idêntica nos dois lados.
 
 ### Monorepo
@@ -359,7 +359,7 @@ leitura de nota fiscal por foto (OCR) · relatório de consumo mensal.
 | **Expo Go só roda o SDK mais recente** | Fixar SDK 58; subir de SDK só de propósito |
 | Perda de dados (SQLite no celular + server) | Backup diário `VACUUM INTO` no server + export/import manual no app |
 | **APK assinado**: trocar keystore impede atualizar por cima | Salvar o keystore do EAS no repo privado/gerenciador de senhas |
-| Drizzle + expo-sqlite: `.sql` no Metro | `drizzle-kit generate` + `useMigrations` asset-aware; fallback: migração à mão |
+| ~~Drizzle + expo-sqlite~~ | Resolvido: DDL em SQL puro, migrações por `PRAGMA user_version` nos dois lados |
 | Push remoto não funciona no Expo Go | MVP usa notificação **local** (agendada no aparelho) |
 | iOS build precisa de Mac | Fora do escopo — Android only |
 | Scope creep | Fases com aceite fechado; F6 é o único candidato a sair do MVP se apertar |
