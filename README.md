@@ -157,9 +157,9 @@ DATABASE_PATH=./data/smoke.db PORT=3999 npm start &
 npm run smoke -- http://127.0.0.1:3999
 ```
 
-50 asserções: bootstrap, convite, login por PIN, unicidade do PIN, sync entre dois membros, LWW,
-tombstones, append-only das movimentações, FK inválida recusada com motivo, isolamento por casa,
-troca de PIN, logout e rate limit.
+53 asserções: bootstrap, convite, login por PIN, unicidade do PIN, sync entre dois membros, LWW,
+tombstones, append-only das movimentações, FK inválida recusada com motivo, protocolo incompatível,
+isolamento por casa, troca de PIN, logout e rate limit.
 
 ---
 
@@ -252,6 +252,21 @@ Fora da F1 (próximas fases): quantidade em estoque e histórico (F3), scanner (
 7. Celular B cria “Despensa” offline (modo avião) → mostra “não sincronizado”; volta a rede → sincroniza e aparece no A.
 
 ---
+
+## Problemas comuns
+
+**"Servidor desatualizado: reinicie o servidor"**
+O app e o servidor têm contratos diferentes de sync (o app manda `protocol` e o servidor confere).
+Reinicie o servidor: `npm run dev` já observa `packages/core` e reinicia sozinho, mas um processo
+antigo continua rodando até você matá-lo (`fuser -k 3030/tcp`).
+
+**Tela volta sozinha para o início**
+Era bug de redirect: qualquer rota fora das abas era considerada inválida. Corrigido — hoje só
+telas de entrada (`login`, `setup`, `join`, `server`) expulsam o usuário autenticado.
+
+**Não consigo criar um item**
+Verifique se apareceu "Servidor desatualizado" na tela de Ajustes/Sincronização. O item é gravado
+no aparelho mesmo sem servidor; ele sobe no próximo sync bem-sucedido.
 
 ## Notas de decisão
 

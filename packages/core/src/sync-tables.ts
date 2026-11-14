@@ -8,6 +8,13 @@
  * Ordem importa: pais antes dos filhos (FKs).
  */
 
+/**
+ * Versão do contrato de sync. Muda quando o formato do payload muda.
+ * O app recusa sincronizar com servidor de outra versão: erro claro é melhor do
+ * que zod reclamando de campo ausente.
+ */
+export const PROTOCOL_VERSION = 2;
+
 export type ColumnKind = 'text' | 'int';
 
 export type SyncTableSpec = {

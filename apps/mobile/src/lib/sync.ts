@@ -1,4 +1,5 @@
 import {
+  PROTOCOL_VERSION,
   SYNC_TABLES,
   emptyCursor,
   type SyncCursor,
@@ -7,12 +8,50 @@ import {
   type SyncTableSpec,
 } from '@quanto/core';
 import { getDatabase, getSetting, setSetting } from '@/db';
-import { api } from './api';
+import { ApiError, api, getServerStatus } from './api';
 
 const CURSOR_KEY = 'sync_cursor';
 const LAST_SYNC_KEY = 'last_sync_at';
 const CLOCK_SKEW_KEY = 'clock_skew_ms';
 const PUSH_LIMIT = 200;
+const PROTOCOL_KEY = 'server_protocol';
+
+/** Gravado quando o app fala com o servidor (status/login/sync). */
+export function rememberServerProtocol(protocol: unknown): void {
+  setSetting(PROTOCOL_KEY, String(typeof protocol === 'number' ? protocol : 0));
+}
+
+/**
+ * Servidor antigo respondendo um payload novo gera erro incompreensível de
+ * validação ("esperava número, recebeu undefined"). Melhor parar antes com uma
+ * instrução clara.
+ */
+async function assertServerProtocol(): Promise<void> {
+  let protocol = Number(getSetting(PROTOCOL_KEY) ?? 0);
+
+  // primeira sincronização depois do login: descobre a versão agora
+  if (protocol === 0) {
+    const status = await getServerStatus();
+    rememberServerProtocol(status.protocol);
+    protocol = Number(status.protocol ?? 0);
+
+    if (protocol === 0) {
+      throw new ApiError(
+        0,
+        'Servidor desatualizado: ele não informa a versão do contrato. Reinicie o servidor (npm run dev) para atualizar.',
+        'protocol_mismatch',
+      );
+    }
+  }
+
+  if (protocol !== PROTOCOL_VERSION) {
+    throw new ApiError(
+      0,
+      `Servidor em versão diferente (${protocol}; o app espera ${PROTOCOL_VERSION}). Reinicie o servidor para sincronizar.`,
+      'protocol_mismatch',
+    );
+  }
+}
 
 export type SyncResult = { pushed: number; pulled: number; at: number; rejected: number };
 
@@ -87,6 +126,8 @@ function applyRow(spec: SyncTableSpec, row: SyncRow): void {
  * Genérico sobre `SYNC_TABLES`: tabela nova não exige código novo aqui.
  */
 export async function runSync(token: string): Promise<SyncResult> {
+  await assertServerProtocol();
+
   const db = getDatabase();
   let cursor = readCursor();
   let pushed = 0;
@@ -111,7 +152,7 @@ export async function runSync(token: string): Promise<SyncResult> {
     const response = await api<SyncResponse>('/api/sync', {
       method: 'POST',
       token,
-      body: { cursor, changes },
+      body: { protocol: PROTOCOL_VERSION, cursor, changes },
     });
 
     db.withTransactionSync(() => {
@@ -130,6 +171,7 @@ export async function runSync(token: string): Promise<SyncResult> {
     setSetting(CURSOR_KEY, JSON.stringify(cursor));
     setSetting(LAST_SYNC_KEY, String(at));
     setSetting(CLOCK_SKEW_KEY, String(Date.now() - response.serverTime));
+    rememberServerProtocol(PROTOCOL_VERSION);
 
     if (!response.hasMore && dirtyCount < PUSH_LIMIT) break;
   }

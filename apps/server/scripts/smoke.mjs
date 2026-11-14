@@ -54,6 +54,10 @@ const run = async () => {
   const status = await api('/api/public/status');
   check('GET /api/public/status responde 200', status.status === 200, status);
   check('casa ainda não inicializada', status.body?.initialized === false, status.body);
+  check('status anuncia a versão do protocolo', typeof status.body?.protocol === 'number', status.body);
+
+  const protocol = status.body?.protocol;
+  const syncBody = (changes = {}, cursor = {}) => ({ protocol, cursor, changes });
 
   console.log('\nbootstrap da casa');
   const bootstrap = await api('/api/household', {
@@ -151,7 +155,7 @@ const run = async () => {
   const push = await api('/api/sync', {
     method: 'POST',
     token: adminToken,
-    body: { cursor: {}, changes: { locations: [locationRow()] } },
+    body: syncBody({ locations: [locationRow()] }),
   });
   check('push aceito', push.status === 200 && push.body?.cursor?.locations > 0, push);
   check('nenhuma linha recusada', push.body?.rejected?.length === 0, push.body?.rejected);
@@ -159,7 +163,7 @@ const run = async () => {
   const pullMember = await api('/api/sync', {
     method: 'POST',
     token: memberToken,
-    body: { cursor: {}, changes: {} },
+    body: syncBody(),
   });
   const pulledLocation = pullMember.body?.changes?.locations?.[0];
   check('membro recebe o local da Ana', pulledLocation?.id === locationId, pullMember.body?.changes);
@@ -174,7 +178,7 @@ const run = async () => {
   const emptyPull = await api('/api/sync', {
     method: 'POST',
     token: memberToken,
-    body: { cursor, changes: {} },
+    body: syncBody({}, cursor),
   });
   check(
     'pull com cursor atual não repete linhas',
@@ -185,17 +189,17 @@ const run = async () => {
   const rename = await api('/api/sync', {
     method: 'POST',
     token: memberToken,
-    body: {
+    body: syncBody(
+      { locations: [{ ...pulledLocation, name: 'Despensa da cozinha', updated_at: Date.now() + 10 }] },
       cursor,
-      changes: { locations: [{ ...pulledLocation, name: 'Despensa da cozinha', updated_at: Date.now() + 10 }] },
-    },
+    ),
   });
   check('membro renomeia o local', rename.status === 200 && rename.body?.rejected?.length === 0, rename.body?.rejected);
 
   const adminPull = await api('/api/sync', {
     method: 'POST',
     token: adminToken,
-    body: { cursor: {}, changes: {} },
+    body: syncBody(),
   });
   check(
     'Ana vê o nome novo',
@@ -206,15 +210,12 @@ const run = async () => {
   const stalePush = await api('/api/sync', {
     method: 'POST',
     token: adminToken,
-    body: {
-      cursor: {},
-      changes: { locations: [{ ...pulledLocation, name: 'Nome antigo', updated_at: now }] },
-    },
+    body: syncBody({ locations: [{ ...pulledLocation, name: 'Nome antigo', updated_at: now }] }),
   });
   const afterStale = await api('/api/sync', {
     method: 'POST',
     token: adminToken,
-    body: { cursor: stalePush.body?.cursor, changes: {} },
+    body: syncBody({}, stalePush.body?.cursor),
   });
   check(
     'edição mais antiga não sobrescreve (LWW)',
@@ -225,14 +226,11 @@ const run = async () => {
   const deleted = await api('/api/sync', {
     method: 'POST',
     token: adminToken,
-    body: {
-      cursor: {},
-      changes: {
-        locations: [
-          { ...pulledLocation, name: 'Despensa da cozinha', deleted_at: Date.now(), updated_at: Date.now() + 1000 },
-        ],
-      },
-    },
+    body: syncBody({
+      locations: [
+        { ...pulledLocation, name: 'Despensa da cozinha', deleted_at: Date.now(), updated_at: Date.now() + 1000 },
+      ],
+    }),
   });
   check('delete vira tombstone e propaga', deleted.status === 200, deleted);
 
@@ -241,24 +239,21 @@ const run = async () => {
   const itemPush = await api('/api/sync', {
     method: 'POST',
     token: adminToken,
-    body: {
-      cursor: {},
-      changes: {
-        items: [
-          {
-            id: itemId,
+    body: syncBody({
+      items: [
+        {
+          id: itemId,
             public_id: 'AB12CD',
             name: 'Arroz tipo 1 5 kg',
             brand: 'Tio João',
             kind: 'consumable',
             base_unit: 'g',
-            min_qty: 1000,
-            created_at: now,
-            updated_at: now,
-          },
-        ],
-      },
-    },
+          min_qty: 1000,
+          created_at: now,
+          updated_at: now,
+        },
+      ],
+    }),
   });
   check('item é aceito', itemPush.body?.rejected?.length === 0, itemPush.body?.rejected);
 
@@ -267,12 +262,10 @@ const run = async () => {
   const catalogPush = await api('/api/sync', {
     method: 'POST',
     token: adminToken,
-    body: {
-      cursor: {},
-      changes: {
-        items: [
-          {
-            id: durableItemId,
+    body: syncBody({
+      items: [
+        {
+          id: durableItemId,
             public_id: 'QW34ER',
             name: 'Furadeira de impacto',
             brand: 'Bosch',
@@ -280,31 +273,30 @@ const run = async () => {
             base_unit: 'un',
             created_at: now,
             updated_at: now,
-          },
-        ],
-        assets: [
-          {
-            id: assetId,
-            public_id: 'ZX98CV',
-            item_id: durableItemId,
-            nickname: 'Furadeira da garagem',
-            serial: 'BSH-9911',
-            status: 'available',
-            value_cents: 46990,
-            acquired_on: '2024-03-15',
-            created_at: now,
-            updated_at: now,
-          },
-        ],
-      },
-    },
+        },
+      ],
+      assets: [
+        {
+          id: assetId,
+          public_id: 'ZX98CV',
+          item_id: durableItemId,
+          nickname: 'Furadeira da garagem',
+          serial: 'BSH-9911',
+          status: 'available',
+          value_cents: 46990,
+          acquired_on: '2024-03-15',
+          created_at: now,
+          updated_at: now,
+        },
+      ],
+    }),
   });
   check('bem é aceito', catalogPush.body?.rejected?.length === 0, catalogPush.body?.rejected);
 
   const catalogPull = await api('/api/sync', {
     method: 'POST',
     token: memberToken,
-    body: { cursor: {}, changes: {} },
+    body: syncBody(),
   });
   check(
     'membro vê o item',
@@ -322,13 +314,13 @@ const run = async () => {
     type: 'in',
     created_at: now,
   };
-  await api('/api/sync', { method: 'POST', token: adminToken, body: { cursor: {}, changes: { movements: [movement] } } });
-  await api('/api/sync', { method: 'POST', token: adminToken, body: { cursor: {}, changes: { movements: [movement] } } });
+  await api('/api/sync', { method: 'POST', token: adminToken, body: syncBody({ movements: [movement] }) });
+  await api('/api/sync', { method: 'POST', token: adminToken, body: syncBody({ movements: [movement] }) });
 
   const movementsPull = await api('/api/sync', {
     method: 'POST',
     token: adminToken,
-    body: { cursor: {}, changes: {} },
+    body: syncBody(),
   });
   const sameMovement = movementsPull.body?.changes?.movements?.filter((row) => row.id === movement.id) ?? [];
   check('movimentação é append-only (reenvio não duplica)', sameMovement.length === 1, sameMovement.length);
@@ -337,52 +329,54 @@ const run = async () => {
   const orphan = await api('/api/sync', {
     method: 'POST',
     token: adminToken,
-    body: {
-      cursor: {},
-      changes: {
-        assets: [
-          {
-            id: crypto.randomUUID(),
-            public_id: 'ZZZZZZ',
-            item_id: 'item-que-nao-existe',
-            status: 'available',
-            created_at: now,
-            updated_at: now,
-          },
-        ],
-      },
-    },
+    body: syncBody({
+      assets: [
+        {
+          id: crypto.randomUUID(),
+          public_id: 'ZZZZZZ',
+          item_id: 'item-que-nao-existe',
+          status: 'available',
+          created_at: now,
+          updated_at: now,
+        },
+      ],
+    }),
   });
   check('FK inválida é recusada com motivo', orphan.body?.rejected?.length === 1, orphan.body?.rejected);
+
+  const wrongProtocol = await api('/api/sync', {
+    method: 'POST',
+    token: adminToken,
+    body: { protocol: -1, cursor: {}, changes: {} },
+  });
+  check('protocolo incompatível → 409', wrongProtocol.status === 409, wrongProtocol);
+  check('código protocol_mismatch', wrongProtocol.body?.code === 'protocol_mismatch', wrongProtocol.body);
 
   const missingRequired = await api('/api/sync', {
     method: 'POST',
     token: adminToken,
-    body: { cursor: {}, changes: { items: [{ id: crypto.randomUUID(), name: 'sem unidade' }] } },
+    body: syncBody({ items: [{ id: crypto.randomUUID(), name: 'sem unidade' }] }),
   });
   check('linha sem campo obrigatório é recusada', missingRequired.body?.rejected?.length === 1, missingRequired.body?.rejected);
 
   const tenantIsolation = await api('/api/sync', {
     method: 'POST',
     token: memberToken,
-    body: {
-      cursor: {},
-      changes: {
-        locations: [
-          {
-            ...locationRow({ id: crypto.randomUUID(), name: 'Invasão' }),
-            household_id: 'outra-casa',
-          },
-        ],
-      },
-    },
+    body: syncBody({
+      locations: [
+        {
+          ...locationRow({ id: crypto.randomUUID(), name: 'Invasão' }),
+          household_id: 'outra-casa',
+        },
+      ],
+    }),
   });
   check('push com household_id estranho é aceito mas reescrito', tenantIsolation.status === 200, tenantIsolation);
 
   const isolationPull = await api('/api/sync', {
     method: 'POST',
     token: memberToken,
-    body: { cursor: {}, changes: {} },
+    body: syncBody(),
   });
   const invaded = isolationPull.body?.changes?.locations?.find((row) => row.name === 'Invasão');
   check(

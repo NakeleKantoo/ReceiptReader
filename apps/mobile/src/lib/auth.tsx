@@ -17,6 +17,7 @@ import {
   type ServerStatus,
 } from '@/lib/api';
 import { setCurrentHousehold } from '@/db/repo';
+import { rememberServerProtocol } from '@/lib/sync';
 import {
   SUGGESTED_SERVER_URL,
   clearServerUrl,
@@ -95,6 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshServerStatus = useCallback(async () => {
     try {
       const status = await getServerStatus();
+      rememberServerProtocol(status.protocol);
       if (!mounted.current) return;
       setServer(status);
       setServerError(null);
@@ -171,6 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!normalized) throw new ApiError(0, 'Endereço inválido. Exemplo: http://192.168.1.5:3030');
 
     const status = await getServerStatus(normalized);
+    rememberServerProtocol(status.protocol);
 
     // trocar de servidor nunca reaproveita sessão de outro
     await clearSession();

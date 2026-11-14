@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import {
+  PROTOCOL_VERSION,
   SYNC_TABLES,
   coerceSyncRow,
   emptyCursor,
@@ -10,7 +11,7 @@ import {
 } from '@quanto/core';
 import type { DB } from '../db/index.ts';
 import { nextRev } from '../db/index.ts';
-import { asyncHandler } from '../lib/errors.ts';
+import { asyncHandler, conflict } from '../lib/errors.ts';
 
 /** Linhas por tabela em cada pull. */
 const PAGE_LIMIT = 500;
@@ -109,6 +110,13 @@ export function syncRoutes(db: DB): Router {
     asyncHandler(async (req, res) => {
       const auth = req.auth!;
       const body = (req.body ?? {}) as { cursor?: unknown; changes?: unknown };
+      if ((body as { protocol?: unknown }).protocol !== PROTOCOL_VERSION) {
+        throw conflict(
+          `Servidor e app estão em versões diferentes (servidor ${PROTOCOL_VERSION}). Atualize o app ou reinicie o servidor.`,
+          'protocol_mismatch',
+        );
+      }
+
       const cursor = normalizeCursor(body.cursor);
       const changes =
         body.changes && typeof body.changes === 'object'

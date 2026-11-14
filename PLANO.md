@@ -6,6 +6,7 @@
 >
 > **Status:** plano final (v3). v1 (web) e v2 (multi-plataforma) descartadas.
 > **F0 ✅ · F1 ✅** (catálogo, categorias, bens, códigos, apelidos). Próxima: F2 (scanner).
+> App e servidor negociam `PROTOCOL_VERSION` (hoje 2): versão diferente falha com mensagem clara.
 
 ---
 

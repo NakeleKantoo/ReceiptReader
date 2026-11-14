@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { DB } from '../db/index.ts';
 import { env } from '../env.ts';
 import { countMembers } from '../lib/users.ts';
+import { PROTOCOL_VERSION } from '@quanto/core';
 
 /** Endpoint sem autenticação: a tela de login precisa saber se a casa já existe. */
 export function publicRoutes(db: DB): Router {
@@ -19,6 +20,7 @@ export function publicRoutes(db: DB): Router {
       memberCount: household ? countMembers(db, household.id) : 0,
       serverTime: Date.now(),
       version: 1,
+      protocol: PROTOCOL_VERSION,
     });
   });
 

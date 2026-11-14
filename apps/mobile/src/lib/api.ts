@@ -127,6 +127,8 @@ export type ServerStatus = {
   memberCount: number;
   serverTime: number;
   version: number;
+  /** versão do contrato de sync — ver PROTOCOL_VERSION em @quanto/core */
+  protocol?: number;
 };
 
 export type AuthResponse = {
