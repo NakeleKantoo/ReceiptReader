@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/lib/auth';
 import { useSync } from '@/lib/useSync';
 import { useFocusReload } from '@/lib/useFocusReload';
-import { countPendingChanges } from '@/db/queries';
+import { countPendingChanges } from '@/db/repo';
 import {
   ApiError,
   apiCreateInvite,

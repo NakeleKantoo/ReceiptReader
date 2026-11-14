@@ -134,39 +134,41 @@ const run = async () => {
   console.log('\nsync entre dois aparelhos');
   const now = Date.now();
   const locationId = crypto.randomUUID();
+
+  const locationRow = (overrides = {}) => ({
+    id: locationId,
+    name: 'Despensa',
+    parent_id: null,
+    icon: 'pantry',
+    notes: null,
+    sort_order: 0,
+    deleted_at: null,
+    created_at: now,
+    updated_at: now,
+    ...overrides,
+  });
+
   const push = await api('/api/sync', {
     method: 'POST',
     token: adminToken,
-    body: {
-      cursor: { categories: 0, locations: 0 },
-      changes: {
-        locations: [
-          {
-            id: locationId,
-            name: 'Despensa',
-            parentId: null,
-            icon: 'pantry',
-            notes: null,
-            sortOrder: 0,
-            deletedAt: null,
-            createdAt: now,
-            updatedAt: now,
-          },
-        ],
-      },
-    },
+    body: { cursor: {}, changes: { locations: [locationRow()] } },
   });
   check('push aceito', push.status === 200 && push.body?.cursor?.locations > 0, push);
-  check('push foi aplicado', push.body?.changes?.locations?.length === 1, push.body?.changes);
+  check('nenhuma linha recusada', push.body?.rejected?.length === 0, push.body?.rejected);
 
   const pullMember = await api('/api/sync', {
     method: 'POST',
     token: memberToken,
-    body: { cursor: { categories: 0, locations: 0 }, changes: {} },
+    body: { cursor: {}, changes: {} },
   });
   const pulledLocation = pullMember.body?.changes?.locations?.[0];
   check('membro recebe o local da Ana', pulledLocation?.id === locationId, pullMember.body?.changes);
   check('local veio com rev', pulledLocation?.rev > 0, pulledLocation);
+  check(
+    'pull traz o household_id do servidor',
+    pulledLocation?.household_id === bootstrap.body?.user?.householdId,
+    pulledLocation,
+  );
 
   const cursor = pullMember.body?.cursor;
   const emptyPull = await api('/api/sync', {
@@ -174,30 +176,26 @@ const run = async () => {
     token: memberToken,
     body: { cursor, changes: {} },
   });
-  check('pull com cursor atual não repete linhas', emptyPull.body?.changes?.locations?.length === 0, emptyPull.body?.changes);
+  check(
+    'pull com cursor atual não repete linhas',
+    emptyPull.body?.changes?.locations?.length === 0,
+    emptyPull.body?.changes,
+  );
 
   const rename = await api('/api/sync', {
     method: 'POST',
     token: memberToken,
     body: {
       cursor,
-      changes: {
-        locations: [
-          {
-            ...pulledLocation,
-            name: 'Despensa da cozinha',
-            updatedAt: Date.now() + 10,
-          },
-        ],
-      },
+      changes: { locations: [{ ...pulledLocation, name: 'Despensa da cozinha', updated_at: Date.now() + 10 }] },
     },
   });
-  check('membro renomeia o local', rename.status === 200, rename);
+  check('membro renomeia o local', rename.status === 200 && rename.body?.rejected?.length === 0, rename.body?.rejected);
 
   const adminPull = await api('/api/sync', {
     method: 'POST',
     token: adminToken,
-    body: { cursor: { categories: 0, locations: 0 }, changes: {} },
+    body: { cursor: {}, changes: {} },
   });
   check(
     'Ana vê o nome novo',
@@ -209,10 +207,8 @@ const run = async () => {
     method: 'POST',
     token: adminToken,
     body: {
-      cursor: { categories: 0, locations: 0 },
-      changes: {
-        locations: [{ ...pulledLocation, name: 'Nome antigo', updatedAt: now }],
-      },
+      cursor: {},
+      changes: { locations: [{ ...pulledLocation, name: 'Nome antigo', updated_at: now }] },
     },
   });
   const afterStale = await api('/api/sync', {
@@ -230,41 +226,170 @@ const run = async () => {
     method: 'POST',
     token: adminToken,
     body: {
-      cursor: { categories: 0, locations: 0 },
+      cursor: {},
       changes: {
         locations: [
-          {
-            id: locationId,
-            name: 'Despensa da cozinha',
-            deletedAt: Date.now(),
-            createdAt: now,
-            updatedAt: Date.now() + 1000,
-          },
+          { ...pulledLocation, name: 'Despensa da cozinha', deleted_at: Date.now(), updated_at: Date.now() + 1000 },
         ],
       },
     },
   });
   check('delete vira tombstone e propaga', deleted.status === 200, deleted);
 
-  const tenantIsolation = await api('/api/sync', {
+  console.log('\ncatálogo: itens e bens (F1)');
+  const itemId = crypto.randomUUID();
+  const itemPush = await api('/api/sync', {
     method: 'POST',
-    token: memberToken,
+    token: adminToken,
     body: {
-      cursor: { categories: 0, locations: 0 },
+      cursor: {},
       changes: {
-        locations: [
+        items: [
           {
-            id: crypto.randomUUID(),
-            name: 'Invasão',
-            createdAt: now,
-            updatedAt: now,
-            householdId: 'outra-casa',
+            id: itemId,
+            public_id: 'AB12CD',
+            name: 'Arroz tipo 1 5 kg',
+            brand: 'Tio João',
+            kind: 'consumable',
+            base_unit: 'g',
+            min_qty: 1000,
+            created_at: now,
+            updated_at: now,
           },
         ],
       },
     },
   });
-  check('householdId enviado pelo cliente é ignorado', tenantIsolation.status === 200);
+  check('item é aceito', itemPush.body?.rejected?.length === 0, itemPush.body?.rejected);
+
+  const durableItemId = crypto.randomUUID();
+  const assetId = crypto.randomUUID();
+  const catalogPush = await api('/api/sync', {
+    method: 'POST',
+    token: adminToken,
+    body: {
+      cursor: {},
+      changes: {
+        items: [
+          {
+            id: durableItemId,
+            public_id: 'QW34ER',
+            name: 'Furadeira de impacto',
+            brand: 'Bosch',
+            kind: 'durable',
+            base_unit: 'un',
+            created_at: now,
+            updated_at: now,
+          },
+        ],
+        assets: [
+          {
+            id: assetId,
+            public_id: 'ZX98CV',
+            item_id: durableItemId,
+            nickname: 'Furadeira da garagem',
+            serial: 'BSH-9911',
+            status: 'available',
+            value_cents: 46990,
+            acquired_on: '2024-03-15',
+            created_at: now,
+            updated_at: now,
+          },
+        ],
+      },
+    },
+  });
+  check('bem é aceito', catalogPush.body?.rejected?.length === 0, catalogPush.body?.rejected);
+
+  const catalogPull = await api('/api/sync', {
+    method: 'POST',
+    token: memberToken,
+    body: { cursor: {}, changes: {} },
+  });
+  check(
+    'membro vê o item',
+    catalogPull.body?.changes?.items?.some((item) => item.id === itemId),
+  );
+  const pulledAsset = catalogPull.body?.changes?.assets?.find((asset) => asset.id === assetId);
+  check('membro vê o bem', Boolean(pulledAsset), catalogPull.body?.changes?.assets);
+  check('valor do bem em centavos', pulledAsset?.value_cents === 46990, pulledAsset?.value_cents);
+
+  console.log('\nregras do sync');
+  const movement = {
+    id: crypto.randomUUID(),
+    item_id: itemId,
+    delta: 5000,
+    type: 'in',
+    created_at: now,
+  };
+  await api('/api/sync', { method: 'POST', token: adminToken, body: { cursor: {}, changes: { movements: [movement] } } });
+  await api('/api/sync', { method: 'POST', token: adminToken, body: { cursor: {}, changes: { movements: [movement] } } });
+
+  const movementsPull = await api('/api/sync', {
+    method: 'POST',
+    token: adminToken,
+    body: { cursor: {}, changes: {} },
+  });
+  const sameMovement = movementsPull.body?.changes?.movements?.filter((row) => row.id === movement.id) ?? [];
+  check('movimentação é append-only (reenvio não duplica)', sameMovement.length === 1, sameMovement.length);
+  check('movimentação ganha o autor da sessão', sameMovement[0]?.user_id === bootstrap.body?.user?.id, sameMovement[0]);
+
+  const orphan = await api('/api/sync', {
+    method: 'POST',
+    token: adminToken,
+    body: {
+      cursor: {},
+      changes: {
+        assets: [
+          {
+            id: crypto.randomUUID(),
+            public_id: 'ZZZZZZ',
+            item_id: 'item-que-nao-existe',
+            status: 'available',
+            created_at: now,
+            updated_at: now,
+          },
+        ],
+      },
+    },
+  });
+  check('FK inválida é recusada com motivo', orphan.body?.rejected?.length === 1, orphan.body?.rejected);
+
+  const missingRequired = await api('/api/sync', {
+    method: 'POST',
+    token: adminToken,
+    body: { cursor: {}, changes: { items: [{ id: crypto.randomUUID(), name: 'sem unidade' }] } },
+  });
+  check('linha sem campo obrigatório é recusada', missingRequired.body?.rejected?.length === 1, missingRequired.body?.rejected);
+
+  const tenantIsolation = await api('/api/sync', {
+    method: 'POST',
+    token: memberToken,
+    body: {
+      cursor: {},
+      changes: {
+        locations: [
+          {
+            ...locationRow({ id: crypto.randomUUID(), name: 'Invasão' }),
+            household_id: 'outra-casa',
+          },
+        ],
+      },
+    },
+  });
+  check('push com household_id estranho é aceito mas reescrito', tenantIsolation.status === 200, tenantIsolation);
+
+  const isolationPull = await api('/api/sync', {
+    method: 'POST',
+    token: memberToken,
+    body: { cursor: {}, changes: {} },
+  });
+  const invaded = isolationPull.body?.changes?.locations?.find((row) => row.name === 'Invasão');
+  check(
+    'household_id do cliente é ignorado',
+    invaded?.household_id === bootstrap.body?.user?.householdId,
+    invaded,
+  );
 
   console.log('\ntroca de PIN');
   const changeSecret = await api('/api/household/me/secret', {

@@ -1,142 +1,165 @@
 import { Router } from 'express';
-import { syncRequestSchema } from '@quanto/core';
+import {
+  SYNC_TABLES,
+  coerceSyncRow,
+  emptyCursor,
+  getTableSpec,
+  rowId,
+  type SyncRow,
+  type SyncTableSpec,
+} from '@quanto/core';
 import type { DB } from '../db/index.ts';
 import { nextRev } from '../db/index.ts';
 import { asyncHandler } from '../lib/errors.ts';
 
-/** Quantas linhas por tabela em cada pull. */
+/** Linhas por tabela em cada pull. */
 const PAGE_LIMIT = 500;
 
-type PulledRow = { rev: number };
+type Cursor = Record<string, number>;
+
+function normalizeCursor(input: unknown): Cursor {
+  const cursor = emptyCursor();
+  if (!input || typeof input !== 'object') return cursor;
+
+  for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
+    if (!getTableSpec(key)) continue;
+    const number = Number(value);
+    cursor[key] = Number.isFinite(number) && number > 0 ? Math.trunc(number) : 0;
+  }
+
+  return cursor;
+}
+
+/** `better-sqlite3` genérico o suficiente para não vazar para as assinaturas. */
+type PreparedStatement = {
+  run: (params: Record<string, unknown>) => { changes: number };
+  all: (...params: unknown[]) => unknown[];
+};
+
+type CachedStatements = {
+  spec: SyncTableSpec;
+  upsert: PreparedStatement | null;
+  pull: PreparedStatement;
+};
+
+function buildStatements(db: DB): CachedStatements[] {
+  return SYNC_TABLES.map((spec) => {
+    const columns = Object.keys(spec.columns);
+    const columnList = columns.join(', ');
+    const placeholders = columns.map((column) => `@${column}`).join(', ');
+
+    let upsert: PreparedStatement | null = null;
+
+    if (spec.appendOnly) {
+      // append-only: nunca sobrescreve (desfazer = inserir a linha inversa)
+      upsert = db.prepare(
+        `INSERT OR IGNORE INTO ${spec.name} (${columnList}) VALUES (${placeholders})`,
+      ) as unknown as PreparedStatement;
+    } else {
+      const immutable = new Set(['id', 'household_id', 'created_at']);
+      const updates = columns
+        .filter((column) => !immutable.has(column))
+        .map((column) =>
+          column === 'updated_at'
+            ? // carimbo do servidor: LWW só é consistente se o valor nunca andar para trás
+              `updated_at = max(excluded.updated_at, ${spec.name}.updated_at + 1)`
+            : `${column} = excluded.${column}`,
+        )
+        .join(',\n        ');
+
+      upsert = db.prepare(`
+        INSERT INTO ${spec.name} (${columnList})
+        VALUES (${placeholders})
+        ON CONFLICT(id) DO UPDATE SET
+        ${updates}
+        WHERE excluded.household_id = ${spec.name}.household_id
+          AND excluded.updated_at >= ${spec.name}.updated_at
+      `) as unknown as PreparedStatement;
+    }
+
+    const pull = db.prepare(`
+      SELECT ${columnList} FROM ${spec.name}
+      WHERE household_id = ? AND rev > ?
+      ORDER BY rev ASC
+      LIMIT ?
+    `) as unknown as PreparedStatement;
+
+    return { spec, upsert, pull };
+  });
+}
 
 /**
- * Sync bidirecional em um round-trip.
+ * Sync bidirecional em um round-trip, genérico sobre `SYNC_TABLES`.
  *
- * Push: LWW por `updated_at` do próprio registro, com carimbo do servidor
- * (`max(cliente, servidor+1)`) para que a comparação seja sempre consistente.
- * Pull: cursor **por tabela** — um cursor global pularia linhas quando uma tabela
- * bate no limite de página e a outra não.
+ * Push: LWW por `updated_at` com carimbo do servidor; append-only é insert-only.
+ * Pull: cursor **por tabela** — um cursor global pularia linhas quando uma
+ * tabela bate no limite de página e outra não.
  */
 export function syncRoutes(db: DB): Router {
   const router = Router();
-
-  const upsertCategory = db.prepare(`
-    INSERT INTO categories
-      (id, household_id, name, parent_id, icon, color, sort_order, deleted_at, created_at, updated_at, rev)
-    VALUES
-      (@id, @householdId, @name, @parentId, @icon, @color, @sortOrder, @deletedAt, @createdAt, @updatedAt, @rev)
-    ON CONFLICT(id) DO UPDATE SET
-      name       = excluded.name,
-      parent_id  = excluded.parent_id,
-      icon       = excluded.icon,
-      color      = excluded.color,
-      sort_order = excluded.sort_order,
-      deleted_at = excluded.deleted_at,
-      updated_at = max(excluded.updated_at, categories.updated_at + 1),
-      rev        = excluded.rev
-    WHERE excluded.household_id = categories.household_id
-      AND excluded.updated_at >= categories.updated_at
-  `);
-
-  const upsertLocation = db.prepare(`
-    INSERT INTO locations
-      (id, household_id, name, parent_id, icon, notes, sort_order, deleted_at, created_at, updated_at, rev)
-    VALUES
-      (@id, @householdId, @name, @parentId, @icon, @notes, @sortOrder, @deletedAt, @createdAt, @updatedAt, @rev)
-    ON CONFLICT(id) DO UPDATE SET
-      name       = excluded.name,
-      parent_id  = excluded.parent_id,
-      icon       = excluded.icon,
-      notes      = excluded.notes,
-      sort_order = excluded.sort_order,
-      deleted_at = excluded.deleted_at,
-      updated_at = max(excluded.updated_at, locations.updated_at + 1),
-      rev        = excluded.rev
-    WHERE excluded.household_id = locations.household_id
-      AND excluded.updated_at >= locations.updated_at
-  `);
-
-  const pullCategories = db.prepare(`
-    SELECT id, household_id AS householdId, name, parent_id AS parentId, icon, color,
-           sort_order AS sortOrder, deleted_at AS deletedAt, created_at AS createdAt,
-           updated_at AS updatedAt, rev
-    FROM categories
-    WHERE household_id = ? AND rev > ?
-    ORDER BY rev ASC
-    LIMIT ?
-  `);
-
-  const pullLocations = db.prepare(`
-    SELECT id, household_id AS householdId, name, parent_id AS parentId, icon, notes,
-           sort_order AS sortOrder, deleted_at AS deletedAt, created_at AS createdAt,
-           updated_at AS updatedAt, rev
-    FROM locations
-    WHERE household_id = ? AND rev > ?
-    ORDER BY rev ASC
-    LIMIT ?
-  `);
-
-  const countPending = db.prepare(`
-    SELECT
-      (SELECT COUNT(*) FROM categories WHERE household_id = ?) AS categories,
-      (SELECT COUNT(*) FROM locations WHERE household_id = ?) AS locations
+  const statements = buildStatements(db);
+  const pending = db.prepare(`
+    SELECT 'items' AS table_name, COUNT(*) AS total FROM items WHERE household_id = ?
+    UNION ALL SELECT 'assets', COUNT(*) FROM assets WHERE household_id = ?
+    UNION ALL SELECT 'movements', COUNT(*) FROM movements WHERE household_id = ?
   `);
 
   router.post(
     '/',
     asyncHandler(async (req, res) => {
       const auth = req.auth!;
-      const { cursor, changes } = syncRequestSchema.parse(req.body ?? {});
+      const body = (req.body ?? {}) as { cursor?: unknown; changes?: unknown };
+      const cursor = normalizeCursor(body.cursor);
+      const changes =
+        body.changes && typeof body.changes === 'object'
+          ? (body.changes as Record<string, unknown>)
+          : {};
 
       const payload = db.transaction(() => {
         let pushed = 0;
+        const rejected: { table: string; id: string | null; reason: string }[] = [];
+        const nextCursor: Cursor = { ...cursor };
+        const pulled: Record<string, SyncRow[]> = {};
 
-        for (const row of changes.categories ?? []) {
-          const info = upsertCategory.run({
-            id: row.id,
-            householdId: auth.householdId,
-            name: row.name,
-            parentId: row.parentId ?? null,
-            icon: row.icon ?? null,
-            color: row.color ?? null,
-            sortOrder: row.sortOrder ?? 0,
-            deletedAt: row.deletedAt ?? null,
-            createdAt: row.createdAt,
-            updatedAt: row.updatedAt,
-            rev: nextRev(db),
-          });
-          pushed += info.changes;
+        for (const { spec, upsert, pull } of statements) {
+          const incoming = changes[spec.name];
+
+          if (Array.isArray(incoming)) {
+            for (const raw of incoming) {
+              const parsed = coerceSyncRow(spec, raw, auth.householdId);
+              if (!parsed.ok) {
+                rejected.push({ table: spec.name, id: rowId((raw ?? {}) as SyncRow), reason: parsed.reason });
+                continue;
+              }
+
+              const row: SyncRow = { ...parsed.row, rev: nextRev(db) };
+
+              if (spec.name === 'movements') {
+                // a movimentação é imutável: o autor vem da sessão, não do cliente
+                row.user_id = typeof row.user_id === 'string' && row.user_id ? row.user_id : auth.userId;
+              }
+
+              try {
+                const info = upsert!.run(row);
+                pushed += info.changes;
+              } catch (error) {
+                rejected.push({
+                  table: spec.name,
+                  id: rowId(row),
+                  reason: (error as Error).message,
+                });
+              }
+            }
+          }
+
+          const rows = pull.all(auth.householdId, cursor[spec.name] ?? 0, PAGE_LIMIT) as SyncRow[];
+          pulled[spec.name] = rows;
+          if (rows.length > 0) nextCursor[spec.name] = Number(rows[rows.length - 1]!.rev);
         }
 
-        for (const row of changes.locations ?? []) {
-          const info = upsertLocation.run({
-            id: row.id,
-            householdId: auth.householdId,
-            name: row.name,
-            parentId: row.parentId ?? null,
-            icon: row.icon ?? null,
-            notes: row.notes ?? null,
-            sortOrder: row.sortOrder ?? 0,
-            deletedAt: row.deletedAt ?? null,
-            createdAt: row.createdAt,
-            updatedAt: row.updatedAt,
-            rev: nextRev(db),
-          });
-          pushed += info.changes;
-        }
+        const hasMore = Object.values(pulled).some((rows) => rows.length >= PAGE_LIMIT);
 
-        const categories = pullCategories.all(auth.householdId, cursor.categories, PAGE_LIMIT) as PulledRow[];
-        const locations = pullLocations.all(auth.householdId, cursor.locations, PAGE_LIMIT) as PulledRow[];
-
-        return {
-          pushed,
-          hasMore: categories.length === PAGE_LIMIT || locations.length === PAGE_LIMIT,
-          cursor: {
-            categories: categories.length ? categories[categories.length - 1]!.rev : cursor.categories,
-            locations: locations.length ? locations[locations.length - 1]!.rev : cursor.locations,
-          },
-          changes: { categories, locations },
-        };
+        return { cursor: nextCursor, hasMore, changes: pulled, rejected, pushed };
       })();
 
       res.json({ ...payload, serverTime: Date.now() });
@@ -148,7 +171,8 @@ export function syncRoutes(db: DB): Router {
     asyncHandler(async (req, res) => {
       const auth = req.auth!;
       res.json({
-        ...(countPending.get(auth.householdId, auth.householdId) as object),
+        rows: pending.all(auth.householdId, auth.householdId, auth.householdId),
+        tables: SYNC_TABLES.length,
         serverTime: Date.now(),
       });
     }),

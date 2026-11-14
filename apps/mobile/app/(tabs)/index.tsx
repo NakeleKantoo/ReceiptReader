@@ -5,12 +5,20 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth';
 import { useSync } from '@/lib/useSync';
 import { useFocusReload } from '@/lib/useFocusReload';
-import { countPendingChanges, countRows } from '@/db/queries';
+import { countPendingChanges, countRows, countTotalValueCents } from '@/db/repo';
 import { greeting, relativeTime } from '@/lib/format';
 import { AppText, Badge, Button, Card, Screen } from '@/components/ui';
+import { formatBRL } from '@quanto/core';
 import { radius, spacing, usePalette } from '@/theme';
 
-type Counts = { locations: number; categories: number; items: number; assets: number; pending: number };
+type Counts = {
+  locations: number;
+  categories: number;
+  items: number;
+  assets: number;
+  pending: number;
+  valueCents: number;
+};
 
 export default function DashboardScreen() {
   const { state } = useAuth();
@@ -24,6 +32,7 @@ export default function DashboardScreen() {
     items: 0,
     assets: 0,
     pending: 0,
+    valueCents: 0,
   });
 
   const reload = useCallback(() => {
@@ -33,6 +42,7 @@ export default function DashboardScreen() {
       items: countRows('items'),
       assets: countRows('assets'),
       pending: countPendingChanges(),
+      valueCents: countTotalValueCents(),
     });
   }, []);
 
@@ -54,7 +64,9 @@ export default function DashboardScreen() {
       <View style={{ gap: 2 }}>
         <AppText variant="caption">{greeting()}</AppText>
         <AppText variant="title">{session.user.name}</AppText>
-        <AppText variant="caption">{session.household.name}</AppText>
+        <AppText variant="caption">
+          {session.household.name} · patrimônio {formatBRL(counts.valueCents)}
+        </AppText>
       </View>
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md }}>

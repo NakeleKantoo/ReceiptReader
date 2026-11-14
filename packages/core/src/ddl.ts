@@ -279,6 +279,27 @@ CREATE TABLE IF NOT EXISTS product_cache (
 INSERT OR IGNORE INTO meta (key, value) VALUES ('rev', '0');
 `,
   },
+  {
+    version: 2,
+    /**
+     * F1: tabelas filhas ganham `household_id` próprio. Sem isso o pull precisa
+     * fazer join com o pai só para saber de quem é a linha.
+     */
+    sql: `
+ALTER TABLE item_barcodes ADD COLUMN household_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE item_aliases ADD COLUMN household_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE item_tags ADD COLUMN household_id TEXT NOT NULL DEFAULT '';
+
+CREATE INDEX IF NOT EXISTS item_barcodes_household_idx ON item_barcodes(household_id, rev);
+CREATE INDEX IF NOT EXISTS item_aliases_household_idx ON item_aliases(household_id, rev);
+CREATE INDEX IF NOT EXISTS item_tags_household_idx ON item_tags(household_id, rev);
+CREATE INDEX IF NOT EXISTS tags_household_idx ON tags(household_id, rev);
+CREATE INDEX IF NOT EXISTS lots_household_idx ON lots(household_id, rev);
+CREATE INDEX IF NOT EXISTS maintenance_household_idx ON maintenance(household_id, rev);
+CREATE INDEX IF NOT EXISTS loans_household_idx ON loans(household_id, rev);
+CREATE INDEX IF NOT EXISTS attachments_household_idx ON attachments(household_id, rev);
+`,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;

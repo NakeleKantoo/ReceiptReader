@@ -157,8 +157,9 @@ DATABASE_PATH=./data/smoke.db PORT=3999 npm start &
 npm run smoke -- http://127.0.0.1:3999
 ```
 
-39 asserções: bootstrap, convite, login por PIN, unicidade do PIN, sync entre dois membros, LWW,
-tombstones, isolamento por casa, troca de PIN, logout e rate limit.
+50 asserções: bootstrap, convite, login por PIN, unicidade do PIN, sync entre dois membros, LWW,
+tombstones, append-only das movimentações, FK inválida recusada com motivo, isolamento por casa,
+troca de PIN, logout e rate limit.
 
 ---
 
@@ -221,9 +222,24 @@ e é ele que identifica a conta:
 | App: locais em árvore, criar/apagar offline, badge de “não sincronizado” | ✅ |
 | App: dashboard com contadores e status de sync | ✅ |
 | Docker não-root + healthcheck | ✅ |
-| F1: catálogo de itens e bens (`assets`) | ⏳ |
+| **F1:** catálogo de itens, categorias, bens, códigos de barras e apelidos | ✅ |
 | F2: scanner de código de barras/QR | ⏳ |
 | F4: etiquetas QR + impressão | ⏳ |
+
+### F1 — catálogo
+
+O que já dá para fazer no app:
+
+- **Estoque** → busca por nome/marca/categoria (sem acento), filtro consumível/durável, FAB **+**.
+- **Item**: nome, marca, tipo, unidade de controle (`un`/`g`/`ml`/`mm`), categoria, local padrão,
+  estoque mínimo e observações. Categoria nova pode ser criada direto do formulário.
+- **Bem**: cada unidade de um item durável tem apelido, série, situação, local, data de compra,
+  valor e garantia. O dashboard soma o **valor do patrimônio**.
+- **Códigos de barras** e **nomes alternativos** por item (a busca também acha pelo apelido).
+- **Locais**: renomear e apagar (além de criar).
+
+Fora da F1 (próximas fases): quantidade em estoque e histórico (F3), scanner (F2), fotos
+(backlog), etiquetas QR (F4).
 
 ### Checklist de aceite da F0 (manual)
 

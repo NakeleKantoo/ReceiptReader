@@ -2,11 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { Location } from '@quanto/core';
-import { useAuth } from '@/lib/auth';
 import { useSync } from '@/lib/useSync';
 import { useFocusReload } from '@/lib/useFocusReload';
-import { createLocation, deleteLocation, listLocations } from '@/db/queries';
-import { AppText, Badge, Button, Card, EmptyState, Field, Screen } from '@/components/ui';
+import { createLocation, deleteLocation, listLocations, renameLocation } from '@/db/repo';
+import { AppText, Button, Card, Chip, ChipRow, EmptyState, Field, Screen, SectionTitle, Segmented } from '@/components/ui';
 import { radius, spacing, usePalette } from '@/theme';
 
 type TreeRow = { location: Location; depth: number };
@@ -38,13 +37,14 @@ function buildTree(locations: Location[]): TreeRow[] {
 }
 
 export default function LocationsScreen() {
-  const { state } = useAuth();
   const palette = usePalette();
   const sync = useSync();
 
   const [locations, setLocations] = useState<Location[]>([]);
   const [name, setName] = useState('');
   const [parentId, setParentId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const reload = useCallback(() => setLocations(listLocations()), []);
@@ -53,18 +53,24 @@ export default function LocationsScreen() {
 
   const tree = useMemo(() => buildTree(locations), [locations]);
 
+  const resetForm = () => {
+    setName('');
+    setParentId(null);
+    setEditingId(null);
+    setShowForm(false);
+  };
+
   const submit = async () => {
-    if (!name.trim() || state.status !== 'authenticated') return;
+    if (!name.trim()) return;
 
     setSaving(true);
     try {
-      createLocation({
-        householdId: state.session.user.householdId,
-        name,
-        parentId,
-      });
-      setName('');
-      setParentId(null);
+      if (editingId) {
+        renameLocation(editingId, name);
+      } else {
+        createLocation({ name, parentId });
+      }
+      resetForm();
       reload();
       void sync.run();
     } finally {
@@ -72,8 +78,15 @@ export default function LocationsScreen() {
     }
   };
 
+  const startEdit = (location: Location) => {
+    setName(location.name);
+    setParentId(location.parentId);
+    setEditingId(location.id);
+    setShowForm(true);
+  };
+
   const confirmDelete = (location: Location) => {
-    Alert.alert('Apagar local', `Apagar "${location.name}"?`, [
+    Alert.alert('Apagar local', `Apagar "${location.name}"? Os itens continuam existindo.`, [
       { text: 'Cancelar', style: 'cancel' },
       {
         text: 'Apagar',
@@ -100,48 +113,60 @@ export default function LocationsScreen() {
         </Pressable>
       </View>
 
-      <Card>
-        <AppText variant="subtitle">Novo local</AppText>
-        <Field
-          label="Nome"
-          value={name}
-          onChangeText={setName}
-          placeholder="Despensa"
-          maxLength={80}
-          returnKeyType="done"
-          onSubmitEditing={() => void submit()}
-        />
-
-        {locations.length > 0 ? (
-          <View style={{ gap: spacing.xs }}>
-            <AppText variant="label">Dentro de</AppText>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>
-              <Chip label="Nada (raiz)" active={parentId === null} onPress={() => setParentId(null)} />
-              {tree.map(({ location, depth }) => (
-                <Chip
-                  key={location.id}
-                  label={`${'·'.repeat(depth)}${depth > 0 ? ' ' : ''}${location.name}`}
-                  active={parentId === location.id}
-                  onPress={() => setParentId(location.id)}
-                />
-              ))}
-            </View>
-          </View>
-        ) : null}
-
+      {!showForm ? (
         <Button
-          title="Adicionar"
-          onPress={() => void submit()}
-          loading={saving}
-          disabled={!name.trim()}
+          title="Novo local"
+          onPress={() => {
+            resetForm();
+            setShowForm(true);
+          }}
         />
-      </Card>
+      ) : (
+        <Card>
+          <SectionTitle>{editingId ? 'Renomear local' : 'Novo local'}</SectionTitle>
+
+          <Field
+            label="Nome"
+            value={name}
+            onChangeText={setName}
+            placeholder="Despensa"
+            maxLength={80}
+            autoFocus
+            returnKeyType="done"
+            onSubmitEditing={() => void submit()}
+          />
+
+          {!editingId && tree.length > 0 ? (
+            <View style={{ gap: spacing.xs }}>
+              <AppText variant="label">Dentro de</AppText>
+              <ChipRow>
+                <Chip label="Nada (raiz)" active={parentId === null} onPress={() => setParentId(null)} />
+                {tree.map(({ location, depth }) => (
+                  <Chip
+                    key={location.id}
+                    label={`${'·'.repeat(depth)}${depth > 0 ? ' ' : ''}${location.name}`}
+                    active={parentId === location.id}
+                    onPress={() => setParentId(location.id)}
+                  />
+                ))}
+              </ChipRow>
+            </View>
+          ) : null}
+
+          <Button
+            title={editingId ? 'Salvar' : 'Adicionar'}
+            onPress={() => void submit()}
+            loading={saving}
+            disabled={!name.trim()}
+          />
+          <Button title="Cancelar" variant="ghost" onPress={resetForm} />
+        </Card>
+      )}
 
       <View style={{ gap: spacing.sm }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-          <AppText variant="subtitle">Sua casa</AppText>
-          <Badge text={`${locations.length}`} />
-        </View>
+        <SectionTitle action={<AppText variant="caption">{locations.length}</AppText>}>
+          Sua casa
+        </SectionTitle>
 
         {tree.length === 0 ? (
           <EmptyState
@@ -168,11 +193,12 @@ export default function LocationsScreen() {
               <Ionicons name="location-outline" size={18} color={palette.textMuted} />
               <View style={{ flex: 1 }}>
                 <AppText>{location.name}</AppText>
-                {location.rev === 0 ? (
-                  <AppText variant="caption">não sincronizado</AppText>
-                ) : null}
+                {location.rev === 0 ? <AppText variant="caption">não sincronizado</AppText> : null}
               </View>
-              <Pressable onPress={() => confirmDelete(location)} hitSlop={12}>
+              <Pressable onPress={() => startEdit(location)} hitSlop={10}>
+                <Ionicons name="create-outline" size={18} color={palette.textMuted} />
+              </Pressable>
+              <Pressable onPress={() => confirmDelete(location)} hitSlop={10}>
                 <Ionicons name="trash-outline" size={18} color={palette.textMuted} />
               </Pressable>
             </View>
@@ -186,27 +212,5 @@ export default function LocationsScreen() {
         </AppText>
       ) : null}
     </Screen>
-  );
-}
-
-function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  const palette = usePalette();
-
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        borderRadius: radius.pill,
-        borderWidth: 1,
-        borderColor: active ? palette.primary : palette.border,
-        backgroundColor: active ? `${palette.primary}18` : palette.card,
-      }}
-    >
-      <AppText variant="caption" color={active ? palette.primary : palette.text}>
-        {label}
-      </AppText>
-    </Pressable>
   );
 }

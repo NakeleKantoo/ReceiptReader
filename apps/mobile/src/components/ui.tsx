@@ -23,12 +23,14 @@ export function AppText({
   color,
   style,
   selectable,
+  numberOfLines,
 }: {
   children: ReactNode;
   variant?: TextVariant;
   color?: string;
   style?: StyleProp<TextStyle>;
   selectable?: boolean;
+  numberOfLines?: number;
 }) {
   const palette = usePalette();
   const variants: Record<TextVariant, TextStyle> = {
@@ -45,6 +47,7 @@ export function AppText({
   return (
     <Text
       selectable={selectable}
+      numberOfLines={numberOfLines}
       style={[
         { color: color ?? (muted ? palette.textMuted : palette.text) },
         variants[variant],
@@ -287,6 +290,109 @@ export function ErrorBanner({ message }: { message: string | null }) {
       <AppText variant="caption" color={palette.danger}>
         {message}
       </AppText>
+    </View>
+  );
+}
+
+export function Chip({
+  label,
+  active,
+  onPress,
+  onLongPress,
+}: {
+  label: string;
+  active?: boolean;
+  onPress: () => void;
+  onLongPress?: () => void;
+}) {
+  const palette = usePalette();
+
+  return (
+    <Pressable
+      onPress={onPress}
+      onLongPress={onLongPress}
+      style={{
+        paddingHorizontal: spacing.md,
+        paddingVertical: spacing.sm,
+        borderRadius: radius.pill,
+        borderWidth: 1,
+        borderColor: active ? palette.primary : palette.border,
+        backgroundColor: active ? `${palette.primary}18` : palette.card,
+      }}
+    >
+      <AppText variant="caption" color={active ? palette.primary : palette.text}>
+        {label}
+      </AppText>
+    </Pressable>
+  );
+}
+
+export function ChipRow({ children }: { children: ReactNode }) {
+  return <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>{children}</View>;
+}
+
+/** Segmented control simples (2–4 opções curtas). */
+export function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: { value: T; label: string }[];
+  value: T;
+  onChange: (value: T) => void;
+}) {
+  const palette = usePalette();
+
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        backgroundColor: palette.cardAlt,
+        borderRadius: radius.md,
+        padding: 3,
+        gap: 3,
+      }}
+    >
+      {options.map((option) => {
+        const active = option.value === value;
+        return (
+          <Pressable
+            key={option.value}
+            onPress={() => onChange(option.value)}
+            style={{
+              flex: 1,
+              paddingVertical: 9,
+              borderRadius: radius.sm,
+              alignItems: 'center',
+              backgroundColor: active ? palette.card : 'transparent',
+            }}
+          >
+            <AppText
+              variant="caption"
+              color={active ? palette.text : palette.textMuted}
+              style={{ fontWeight: active ? '700' : '500' }}
+            >
+              {option.label}
+            </AppText>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+export function SectionTitle({ children, action }: { children: ReactNode; action?: ReactNode }) {
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: spacing.sm,
+      }}
+    >
+      <AppText variant="subtitle">{children}</AppText>
+      {action}
     </View>
   );
 }

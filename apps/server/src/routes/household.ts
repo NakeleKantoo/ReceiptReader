@@ -13,7 +13,7 @@ import {
 import type { DB } from '../db/index.ts';
 import { env } from '../env.ts';
 import { asyncHandler, badRequest, conflict, forbidden, notFound } from '../lib/errors.ts';
-import { newId, randomByte } from '../lib/ids.ts';
+import { newId, randomIndex } from '../lib/ids.ts';
 import { hashSecret } from '../lib/secret.ts';
 import {
   assertSecretIsFree,
@@ -141,7 +141,7 @@ export function householdRoutes(db: DB, authRequired: RequestHandler): Router {
       const auth = req.auth!;
       if (auth.role !== 'admin') throw forbidden('Apenas o administrador gera convites');
 
-      const code = generateInviteCode(randomByte);
+      const code = generateInviteCode(randomIndex);
       const expiresAt = Date.now() + env.INVITE_TTL_HOURS * 60 * 60 * 1000;
 
       db.prepare('UPDATE households SET invite_code = ?, invite_expires_at = ? WHERE id = ?').run(

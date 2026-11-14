@@ -51,6 +51,10 @@ function Shell() {
         <Stack.Screen name="setup" />
         <Stack.Screen name="join" />
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="item/[id]" />
+        <Stack.Screen name="item-form" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="asset-form" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="categories" />
       </Stack>
 
       {/* overlay: trocar de estado não desmonta o navegador (evita perder a pilha) */}
