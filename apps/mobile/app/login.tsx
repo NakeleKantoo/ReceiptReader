@@ -51,6 +51,11 @@ export default function LoginScreen() {
       {!server && !serverError ? (
         <Card>
           <AppText variant="caption">Falando com o servidor...</AppText>
+          <Button
+            title="Tentar de novo"
+            variant="secondary"
+            onPress={() => void refreshServerStatus()}
+          />
         </Card>
       ) : null}
 
@@ -63,11 +68,6 @@ export default function LoginScreen() {
             outras pessoas.
           </AppText>
           <Button title="Criar a casa" onPress={() => router.push('/setup')} />
-          <Button
-            title="Já tenho um convite"
-            variant="ghost"
-            onPress={() => router.push('/join')}
-          />
         </Card>
       ) : null}
 

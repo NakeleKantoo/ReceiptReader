@@ -7,7 +7,7 @@ import { AppText, Button, Card, ErrorBanner, Field, Screen } from '@/components/
 import { spacing } from '@/theme';
 
 export default function SetupScreen() {
-  const { bootstrap } = useAuth();
+  const { bootstrap, forgetServer } = useAuth();
   const router = useRouter();
 
   const [householdName, setHouseholdName] = useState('');
@@ -22,6 +22,14 @@ export default function SetupScreen() {
   const match = secret.length > 0 && secret === confirm;
   const canSubmit =
     householdName.trim().length > 0 && name.trim().length > 0 && secretOk && match && !loading;
+
+  const goBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace('/login');
+  };
 
   const submit = async () => {
     setLoading(true);
@@ -86,8 +94,11 @@ export default function SetupScreen() {
         />
 
         <Button title="Criar casa" onPress={() => void submit()} loading={loading} disabled={!canSubmit} />
-        <Button title="Voltar" variant="ghost" onPress={() => router.back()} />
+        <Button title="Voltar" variant="ghost" onPress={goBack} />
       </Card>
+
+      <View style={{ flex: 1 }} />
+      <Button title="Trocar servidor" variant="ghost" onPress={() => void forgetServer()} />
     </Screen>
   );
 }

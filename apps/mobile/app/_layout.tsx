@@ -1,11 +1,16 @@
 import { useEffect } from 'react';
-import { Stack } from 'expo-router';
+import { StyleSheet, View } from 'react-native';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { usePalette } from '@/theme';
 import { BootScreen, LockScreen } from '@/components/session-screens';
 import { getDatabase } from '@/db';
+import { useAuthRedirect } from '@/lib/useAuthRedirect';
+
+/** `boot` é a rota âncora: o redirect manda para o lugar certo a partir dela. */
+export const unstable_settings = { anchor: 'boot' };
 
 export default function RootLayout() {
   // abre/migra o banco antes da primeira tela
@@ -26,32 +31,34 @@ function Shell() {
   const { state } = useAuth();
   const palette = usePalette();
 
+  useAuthRedirect();
+
   if (state.status === 'loading') return <BootScreen />;
-  if (state.status === 'locked') return <LockScreen />;
 
   return (
-    <>
+    <View style={{ flex: 1, backgroundColor: palette.bg }}>
       <StatusBar style="auto" />
       <Stack
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: palette.bg },
+          animation: 'fade',
         }}
       >
-        <Stack.Protected guard={state.status === 'needs-server'}>
-          <Stack.Screen name="server" />
-        </Stack.Protected>
-
-        <Stack.Protected guard={state.status === 'authenticated'}>
-          <Stack.Screen name="(tabs)" />
-        </Stack.Protected>
-
-        <Stack.Protected guard={state.status === 'anonymous'}>
-          <Stack.Screen name="login" />
-          <Stack.Screen name="setup" />
-          <Stack.Screen name="join" />
-        </Stack.Protected>
+        <Stack.Screen name="boot" />
+        <Stack.Screen name="server" />
+        <Stack.Screen name="login" />
+        <Stack.Screen name="setup" />
+        <Stack.Screen name="join" />
+        <Stack.Screen name="(tabs)" />
       </Stack>
-    </>
+
+      {/* overlay: trocar de estado não desmonta o navegador (evita perder a pilha) */}
+      {state.status === 'locked' ? (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: palette.bg }]}>
+          <LockScreen />
+        </View>
+      ) : null}
+    </View>
   );
 }
