@@ -55,6 +55,7 @@ function Shell() {
         <Stack.Screen name="item-form" options={{ presentation: 'modal' }} />
         <Stack.Screen name="asset-form" options={{ presentation: 'modal' }} />
         <Stack.Screen name="categories" />
+        <Stack.Screen name="qr" options={{ presentation: 'modal' }} />
       </Stack>
 
       {/* overlay: trocar de estado não desmonta o navegador (evita perder a pilha) */}

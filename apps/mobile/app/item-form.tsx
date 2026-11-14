@@ -8,6 +8,7 @@ import {
 } from '@quanto/core';
 import { useSync } from '@/lib/useSync';
 import {
+  addBarcode,
   createCategory,
   createItem,
   getItem,
@@ -38,15 +39,17 @@ const UNIT_OPTIONS: { value: BaseUnitName; label: string; hint: string }[] = [
 export default function ItemFormScreen() {
   const router = useRouter();
   const sync = useSync({ auto: false });
-  const params = useLocalSearchParams<{ id?: string }>();
+  const params = useLocalSearchParams<{ id?: string; barcode?: string; name?: string; brand?: string }>();
   const editingId = typeof params.id === 'string' && params.id ? params.id : null;
   const existing = editingId ? getItem(editingId) : null;
 
   const [categories, setCategories] = useState(listCategories());
   const [locations] = useState(listLocations());
 
-  const [name, setName] = useState(existing?.name ?? '');
-  const [brand, setBrand] = useState(existing?.brand ?? '');
+  const scannedBarcode = typeof params.barcode === 'string' ? params.barcode : '';
+
+  const [name, setName] = useState(existing?.name ?? (typeof params.name === 'string' ? params.name : ''));
+  const [brand, setBrand] = useState(existing?.brand ?? (typeof params.brand === 'string' ? params.brand : ''));
   const [kind, setKind] = useState<ItemKind>(existing?.kind ?? 'consumable');
   const [baseUnit, setBaseUnit] = useState<BaseUnitName>(existing?.baseUnit ?? 'un');
   const [categoryId, setCategoryId] = useState<string | null>(existing?.categoryId ?? null);
@@ -89,8 +92,13 @@ export default function ItemFormScreen() {
         notes,
       };
 
-      if (editingId) updateItem(editingId, input);
-      else createItem(input);
+      if (editingId) {
+        updateItem(editingId, input);
+      } else {
+        const created = createItem(input);
+        // código que disparou o cadastro já entra na lista do item
+        if (scannedBarcode) addBarcode(created.id, scannedBarcode);
+      }
 
       void sync.run();
       router.back();
@@ -114,6 +122,10 @@ export default function ItemFormScreen() {
           maxLength={80}
           autoFocus={!editingId}
         />
+
+        {scannedBarcode ? (
+          <AppText variant="caption">cadastrando a partir do código {scannedBarcode}</AppText>
+        ) : null}
         <Field label="Marca" value={brand ?? ''} onChangeText={setBrand} placeholder="Tio João" maxLength={60} />
 
         <View style={{ gap: spacing.xs }}>

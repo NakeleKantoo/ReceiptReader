@@ -150,7 +150,7 @@ export default function ItemDetailScreen() {
           Códigos de barras
         </SectionTitle>
         {barcodes.length === 0 ? (
-          <AppText variant="caption">Nenhum código. Na F2 você poderá escanear para adicionar.</AppText>
+          <AppText variant="caption">Nenhum código. Use a aba Escanear para ler a embalagem.</AppText>
         ) : (
           barcodes.map((barcode) => (
             <View key={barcode.id} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
@@ -295,6 +295,11 @@ export default function ItemDetailScreen() {
         </Card>
       ) : null}
 
+      <Button
+        title="Mostrar etiqueta QR"
+        variant="secondary"
+        onPress={() => router.push(`/qr?type=item&id=${item.id}`)}
+      />
       <Button title="Editar item" variant="secondary" onPress={() => router.push(`/item-form?id=${item.id}`)} />
       <Button title="Apagar item" variant="ghost" onPress={confirmDelete} />
     </Screen>

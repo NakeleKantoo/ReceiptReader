@@ -498,6 +498,52 @@ export function deleteAsset(id: string): void {
 
 // ─────────────────────────────────────────────── contadores
 
+// ─────────────────────────────────────────────── busca por código (scanner)
+
+/** Procura por qualquer código: lista de códigos do item ou o código principal. */
+export function findItemByBarcode(code: string): ItemRow | null {
+  const trimmed = code.trim();
+  if (!trimmed) return null;
+
+  const byList = getDatabase().getFirstSync<{ item_id: string }>(
+    'SELECT item_id FROM item_barcodes WHERE barcode = ? AND deleted_at IS NULL LIMIT 1',
+    trimmed,
+  );
+  if (byList) return getItem(byList.item_id);
+
+  const byMain = getDatabase().getFirstSync<{ id: string }>(
+    'SELECT id FROM items WHERE barcode = ? AND deleted_at IS NULL LIMIT 1',
+    trimmed,
+  );
+  return byMain ? getItem(byMain.id) : null;
+}
+
+export function findItemByPublicId(publicId: string): ItemRow | null {
+  const row = getDatabase().getFirstSync<{ id: string }>(
+    'SELECT id FROM items WHERE public_id = ? AND deleted_at IS NULL LIMIT 1',
+    publicId.toUpperCase(),
+  );
+  return row ? getItem(row.id) : null;
+}
+
+export function findAssetByPublicId(publicId: string): Asset | null {
+  const row = getDatabase().getFirstSync<Row>(
+    'SELECT * FROM assets WHERE public_id = ? AND deleted_at IS NULL LIMIT 1',
+    publicId.toUpperCase(),
+  );
+  return row ? toAsset(row) : null;
+}
+
+export function getLocation(id: string): Location | null {
+  const row = getDatabase().getFirstSync<Row>('SELECT * FROM locations WHERE id = ?', id);
+  return row ? toLocation(row) : null;
+}
+
+/** Já existe esse código em algum item? Devolve o dono, se houver. */
+export function findBarcodeOwner(code: string): ItemRow | null {
+  return findItemByBarcode(code);
+}
+
 export function countRows(table: 'locations' | 'categories' | 'items' | 'assets'): number {
   const row = getDatabase().getFirstSync<{ total: number }>(
     `SELECT COUNT(*) AS total FROM ${table} WHERE deleted_at IS NULL`,

@@ -23,7 +23,9 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "permissions": [
-        "android.permission.USE_BIOMETRIC"
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.CAMERA",
+        "android.permission.VIBRATE"
       ]
     },
     "plugins": [
@@ -43,7 +45,15 @@
             "usesCleartextTraffic": true
           }
         }
-      ]
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "O Quanto usa a c\u00e2mera para ler c\u00f3digos de barras e etiquetas QR dos seus itens.",
+          "barcodeScannerEnabled": true
+        }
+      ],
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": false

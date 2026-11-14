@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import type { Location } from '@quanto/core';
 import { useSync } from '@/lib/useSync';
 import { useFocusReload } from '@/lib/useFocusReload';
@@ -38,6 +39,7 @@ function buildTree(locations: Location[]): TreeRow[] {
 
 export default function LocationsScreen() {
   const palette = usePalette();
+  const router = useRouter();
   const sync = useSync();
 
   const [locations, setLocations] = useState<Location[]>([]);
@@ -195,6 +197,12 @@ export default function LocationsScreen() {
                 <AppText>{location.name}</AppText>
                 {location.rev === 0 ? <AppText variant="caption">não sincronizado</AppText> : null}
               </View>
+              <Pressable
+                onPress={() => router.push(`/qr?type=location&id=${location.id}`)}
+                hitSlop={10}
+              >
+                <Ionicons name="qr-code-outline" size={18} color={palette.textMuted} />
+              </Pressable>
               <Pressable onPress={() => startEdit(location)} hitSlop={10}>
                 <Ionicons name="create-outline" size={18} color={palette.textMuted} />
               </Pressable>

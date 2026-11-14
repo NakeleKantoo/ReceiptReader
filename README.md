@@ -223,7 +223,7 @@ e é ele que identifica a conta:
 | App: dashboard com contadores e status de sync | ✅ |
 | Docker não-root + healthcheck | ✅ |
 | **F1:** catálogo de itens, categorias, bens, códigos de barras e apelidos | ✅ |
-| F2: scanner de código de barras/QR | ⏳ |
+| **F2:** scanner de código de barras/QR, etiqueta QR na tela e consulta de produto | ✅ |
 | F4: etiquetas QR + impressão | ⏳ |
 
 ### F1 — catálogo
@@ -240,6 +240,21 @@ O que já dá para fazer no app:
 
 Fora da F1 (próximas fases): quantidade em estoque e histórico (F3), scanner (F2), fotos
 (backlog), etiquetas QR (F4).
+
+### F2 — scanner
+
+- **Escanear** (aba central): camera contínua lendo EAN-13/8, UPC-A/E, Code128/39/93, ITF-14,
+  Codabar, QR, DataMatrix, PDF417 e Aztec. Lanterna, entrada manual e leitor USB/Bluetooth (HID)
+  pelo campo de texto. Bipe + vibração, e o mesmo código é ignorado por 1,5 s.
+- Código de etiqueta do app (`quanto://i|a|l/...`) abre item, bem ou local.
+- Código de barras conhecido abre o item. Desconhecido consulta o **OpenFoodFacts** (com cache
+  local de 30 dias) e oferece cadastrar já preenchido ou **vincular a um item existente**.
+- **Etiqueta QR na tela**: item, local (e bem) têm a etiqueta com o mesmo payload que a F4 vai
+  imprimir — dá para testar a leitura com dois aparelhos ou uma foto do QR.
+- A câmera é desmontada ao sair da aba (privacidade e bateria).
+
+Contagem por local e movimentação de estoque continuam fora: entram na **F3**, porque hoje não há
+para onde gravar a quantidade.
 
 ### Checklist de aceite da F0 (manual)
 
