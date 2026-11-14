@@ -97,11 +97,43 @@ export function presetFits(preset: LabelPreset): boolean {
   return usedWidth + 2 * preset.marginXMm <= A4.widthMm && usedHeight + 2 * preset.marginYMm <= A4.heightMm;
 }
 
-/** Tamanho do QR dentro da etiqueta: quadrado, com folga para o texto. */
+/**
+ * QR ao lado do texto (etiqueta larga) ou QR em cima (etiqueta estreita).
+ * Larga demais e o texto fica espremido; estreita demais e o QR fica ilegível.
+ */
+export function labelLayout(preset: LabelPreset): {
+  orientation: 'horizontal' | 'vertical';
+  qrMm: number;
+} {
+  if (preset.widthMm >= 55) {
+    return {
+      orientation: 'horizontal',
+      qrMm: Math.max(17, Math.min(preset.heightMm - 12, preset.widthMm * 0.3)),
+    };
+  }
+
+  return {
+    orientation: 'vertical',
+    // vertical: o texto embaixo precisa de ~9 mm; o QR fica com o resto
+    qrMm: Math.max(15, Math.min(preset.widthMm - 8, preset.heightMm * 0.5)),
+  };
+}
+
 export function qrSizeMm(preset: LabelPreset): number {
-  const byHeight = preset.heightMm - 4;
-  const byWidth = preset.columns === 1 ? preset.widthMm * 0.5 : preset.widthMm * 0.42;
-  return Math.max(14, Math.min(byHeight, byWidth));
+  return labelLayout(preset).qrMm;
+}
+
+/** Largura/altura reais da grade (sem as margens da folha) — usada na prévia. */
+export function gridSizeMm(preset: LabelPreset): { widthMm: number; heightMm: number } {
+  return {
+    widthMm: preset.columns * preset.widthMm + (preset.columns - 1) * preset.gapXMm,
+    heightMm: preset.rows * preset.heightMm + (preset.rows - 1) * preset.gapYMm,
+  };
+}
+
+/** A partir daqui o texto pode ser maior (cartão / folha cheia). */
+export function isLargeLabel(preset: LabelPreset): boolean {
+  return preset.widthMm >= 80;
 }
 
 export function chunkPages<T>(items: readonly T[], preset: LabelPreset): T[][] {

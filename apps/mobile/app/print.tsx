@@ -10,22 +10,20 @@ import {
   buildAssetUri,
   buildItemUri,
   buildLocationUri,
+  gridSizeMm,
   perSheet,
   presetFits,
 } from '@quanto/core';
 import { useSync } from '@/lib/useSync';
 import { useFocusReload } from '@/lib/useFocusReload';
 import { listAssets, listItems, listLocations } from '@/db/repo';
-import { buildSheetHtml, type LabelData } from '@/lib/labels-html';
+import { PX_PER_MM, buildSheetHtml, type LabelData } from '@/lib/labels-html';
 import { AppText, Badge, Button, Card, Chip, ChipRow, EmptyState, Screen, SectionTitle } from '@/components/ui';
 import { radius, spacing, usePalette } from '@/theme';
 
 type Source = 'items' | 'assets' | 'locations';
 
 type Candidate = LabelData & { id: string; hint?: string };
-
-const A4_WIDTH_PX = (210 * 96) / 25.4;
-const A4_HEIGHT_PX = (297 * 96) / 25.4;
 
 export default function PrintScreen() {
   const router = useRouter();
@@ -94,6 +92,12 @@ export default function PrintScreen() {
     [candidates, selected],
   );
 
+  // prévia mostra só a grade de etiquetas, ocupando toda a largura da tela
+  const previewWidth = Math.max(220, width - spacing.lg * 2);
+  const grid = gridSizeMm(preset);
+  const previewScale = previewWidth / (grid.widthMm * PX_PER_MM);
+  const previewHeight = Math.round(grid.heightMm * PX_PER_MM * previewScale);
+
   // prévia: mesmo HTML da impressão, só com a primeira folha e escala
   useEffect(() => {
     let cancelled = false;
@@ -106,7 +110,7 @@ export default function PrintScreen() {
 
     setReady(false);
     const timer = setTimeout(() => {
-      void buildSheetHtml(chosen, preset, { preview: true, maxPages: 1 })
+      void buildSheetHtml(chosen, preset, { previewScale, maxPages: 1 })
         .then((result) => {
           if (cancelled) return;
           setPreview({ ...result, nonce: Date.now() });
@@ -121,10 +125,8 @@ export default function PrintScreen() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [chosen, preset]);
+  }, [chosen, preset, previewScale]);
 
-  const scale = Math.min(1, (width - spacing.lg * 2 - 4) / A4_WIDTH_PX);
-  const previewHeight = Math.max(220, A4_HEIGHT_PX * scale);
 
   const print = async () => {
     setBusy(true);
@@ -267,39 +269,62 @@ export default function PrintScreen() {
         {!fits ? <Badge text="não cabe na folha" tone="danger" /> : null}
       </Card>
 
-      <Card>
-        <SectionTitle
-          action={
-            preview ? (
-              <AppText variant="caption">
-                folha 1 de {Math.max(1, Math.ceil(chosen.length / capacity))}
-              </AppText>
-            ) : null
-          }
-        >
-          Prévia
-        </SectionTitle>
+      <SectionTitle
+        action={
+          <AppText variant="caption">
+            {preset.columns}×{preset.rows} ·{' '}
+            {preview ? `folha 1 de ${Math.max(1, Math.ceil(chosen.length / capacity))}` : ''}
+          </AppText>
+        }
+      >
+        Prévia
+      </SectionTitle>
 
-        {chosen.length === 0 ? (
+      {chosen.length === 0 ? (
+        <Card>
           <AppText variant="caption">Selecione etiquetas para ver a prévia.</AppText>
-        ) : !ready || !preview ? (
-          <View style={{ height: 160, alignItems: 'center', justifyContent: 'center', gap: spacing.sm }}>
-            <ActivityIndicator color={palette.primary} />
-            <AppText variant="caption">gerando QR...</AppText>
-          </View>
-        ) : (
-          <View style={{ height: previewHeight, overflow: 'hidden', borderRadius: radius.sm }}>
-            <WebView
-              key={preview.nonce}
-              originWhitelist={['*']}
-              source={{ html: preview.html }}
-              style={{ flex: 1, backgroundColor: 'transparent' }}
-              scrollEnabled={false}
-              javaScriptEnabled
-            />
-          </View>
-        )}
-      </Card>
+        </Card>
+      ) : !ready || !preview ? (
+        <View
+          style={{
+            height: 180,
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: spacing.sm,
+            borderRadius: radius.md,
+            borderWidth: 1,
+            borderColor: palette.border,
+            backgroundColor: palette.card,
+          }}
+        >
+          <ActivityIndicator color={palette.primary} />
+          <AppText variant="caption">gerando QR...</AppText>
+        </View>
+      ) : (
+        <View
+          pointerEvents="none"
+          style={{
+            width: previewWidth,
+            height: previewHeight,
+            borderRadius: radius.md,
+            overflow: 'hidden',
+            borderWidth: 1,
+            borderColor: palette.border,
+            backgroundColor: '#FFFFFF',
+          }}
+        >
+          <WebView
+            key={preview.nonce}
+            originWhitelist={['*']}
+            source={{ html: preview.html }}
+            style={{ flex: 1, backgroundColor: '#FFFFFF' }}
+            pointerEvents="none"
+            scrollEnabled={false}
+            javaScriptEnabled={false}
+            androidLayerType="software"
+          />
+        </View>
+      )}
 
       <Button
         title={chosen.length > capacity ? `Imprimir ${Math.ceil(chosen.length / capacity)} folhas` : 'Imprimir'}
