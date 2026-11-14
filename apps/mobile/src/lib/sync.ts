@@ -92,6 +92,18 @@ export function resetSyncCursor(): void {
   setSetting(CURSOR_KEY, JSON.stringify(emptyCursor()));
 }
 
+/**
+ * Marca tudo como sujo e zera o cursor: o aparelho reenvia o banco inteiro e
+ * baixa de volta. Usar depois de perder/recriar o banco do servidor.
+ */
+export function resendEverything(): void {
+  const db = getDatabase();
+  db.withTransactionSync(() => {
+    for (const spec of SYNC_TABLES) db.runSync(`UPDATE ${spec.name} SET rev = 0`);
+  });
+  resetSyncCursor();
+}
+
 const upsertCache = new Map<string, { columns: string[]; sql: string }>();
 
 function buildLocalUpsert(spec: SyncTableSpec) {

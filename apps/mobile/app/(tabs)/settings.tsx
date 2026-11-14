@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth';
 import { useSync } from '@/lib/useSync';
 import { useFocusReload } from '@/lib/useFocusReload';
 import { countPendingChanges } from '@/db/repo';
+import { resendEverything } from '@/lib/sync';
 import {
   ApiError,
   apiCreateInvite,
@@ -181,6 +182,27 @@ export default function SettingsScreen() {
           variant="secondary"
           loading={sync.running}
           onPress={() => void sync.run()}
+        />
+        <Button
+          title="Reenviar tudo deste aparelho"
+          variant="ghost"
+          onPress={() =>
+            Alert.alert(
+              'Reenviar tudo',
+              'O aparelho vai mandar todos os itens, bens e locais de novo. Use se o servidor foi recriado.',
+              [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                  text: 'Reenviar',
+                  onPress: () => {
+                    resendEverything();
+                    reload();
+                    void sync.run();
+                  },
+                },
+              ],
+            )
+          }
         />
       </Card>
 
