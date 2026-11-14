@@ -4,5 +4,6 @@ export * from './contracts';
 export * from './sync-tables';
 export * from './sync-row';
 export * from './qr';
+export * from './labels';
 export * from './units';
 export * from './money';

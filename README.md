@@ -226,7 +226,7 @@ e é ele que identifica a conta:
 | **F1:** catálogo de itens, categorias, bens, códigos de barras e apelidos | ✅ |
 | **F2:** scanner de código de barras/QR, etiqueta QR na tela e consulta de produto | ✅ |
 | **F3:** movimentações, saldo derivado, histórico por item/bem e desfazer | ✅ |
-| F4: etiquetas QR + impressão | ⏳ |
+| **F4:** folhas de etiqueta QR (A4), prévia e PDF compartilhável | ✅ |
 
 ### F1 — catálogo
 
@@ -274,6 +274,19 @@ para onde gravar a quantidade.
 
 Regra de ouro: o servidor nunca aceita `user_id` de quem não é da casa — o autor do movimento é
 validado contra `members` e, se inválido, vira quem sincronizou.
+
+### F4 — etiquetas e impressão
+
+- **Imprimir etiquetas** (ou pela home) → escolhe Itens, Bens ou Locais, seleciona o que vai
+  imprimir, escolhe o tamanho da folha e vê a **prévia** antes.
+- Presets: **Pimaco A4260 (63,5 × 38,1 — 21/folha)**, pequena 40 × 30, média 50 × 30,
+  cartão 90 × 50 e A4 cheio. O app avisa se o preset não cabe na folha.
+- **Imprimir** abre o diálogo do Android (dá para mandar para PDF); **Compartilhar PDF** gera o
+  arquivo e oferece WhatsApp/Drive/gráfica.
+- QR é **vetorial** (SVG inline, tamanho em mm) — imprime nítido em qualquer tamanho, e cada
+  etiqueta leva nome, subtítulo (categoria/marca/série) e o código legível.
+- Múltiplas folhas: 25 etiquetas na A4260 viram 2 folhas (21 + 4), com quebra de página correta.
+- A prévia usa **o mesmo HTML** que vai para a impressora (WebView), não um desenho parecido.
 
 ### Checklist de aceite da F0 (manual)
 

@@ -1,0 +1,114 @@
+/**
+ * Folhas de etiqueta. A4 = 210 × 297 mm.
+ * Presets reais (Pimaco A4260 é o mais comum no Brasil: 3 × 7 = 21 por folha).
+ */
+
+export type LabelPreset = {
+  id: string;
+  name: string;
+  widthMm: number;
+  heightMm: number;
+  columns: number;
+  rows: number;
+  /** margem da folha até a grade */
+  marginXMm: number;
+  marginYMm: number;
+  gapXMm: number;
+  gapYMm: number;
+};
+
+export const A4 = { widthMm: 210, heightMm: 297 } as const;
+
+export const LABEL_PRESETS: readonly LabelPreset[] = [
+  {
+    id: 'a4260',
+    name: 'Pimaco A4260 · 63,5 × 38,1',
+    widthMm: 63.5,
+    heightMm: 38.1,
+    columns: 3,
+    rows: 7,
+    marginXMm: 9.75,
+    marginYMm: 15.15,
+    gapXMm: 0,
+    gapYMm: 0,
+  },
+  {
+    id: 'small',
+    name: 'Pequena · 40 × 30',
+    widthMm: 40,
+    heightMm: 30,
+    columns: 4,
+    rows: 8,
+    marginXMm: 9,
+    marginYMm: 10,
+    gapXMm: 3,
+    gapYMm: 3,
+  },
+  {
+    id: 'medium',
+    name: 'Média · 50 × 30',
+    widthMm: 50,
+    heightMm: 30,
+    columns: 3,
+    rows: 8,
+    marginXMm: 12,
+    marginYMm: 10,
+    gapXMm: 3,
+    gapYMm: 3,
+  },
+  {
+    id: 'card',
+    name: 'Cartão · 90 × 50',
+    widthMm: 90,
+    heightMm: 50,
+    columns: 2,
+    rows: 5,
+    marginXMm: 10,
+    marginYMm: 10,
+    gapXMm: 4,
+    gapYMm: 4,
+  },
+  {
+    id: 'full',
+    name: 'A4 cheio · 190 × 277',
+    widthMm: 190,
+    heightMm: 277,
+    columns: 1,
+    rows: 1,
+    marginXMm: 10,
+    marginYMm: 10,
+    gapXMm: 0,
+    gapYMm: 0,
+  },
+] as const;
+
+export function getPreset(id: string): LabelPreset {
+  return LABEL_PRESETS.find((preset) => preset.id === id) ?? LABEL_PRESETS[0]!;
+}
+
+export function perSheet(preset: LabelPreset): number {
+  return preset.columns * preset.rows;
+}
+
+/** Cabe na folha? Devolve o erro em mm, para avisar antes de imprimir torto. */
+export function presetFits(preset: LabelPreset): boolean {
+  const usedWidth = (preset.columns - 1) * preset.gapXMm + preset.columns * preset.widthMm;
+  const usedHeight = (preset.rows - 1) * preset.gapYMm + preset.rows * preset.heightMm;
+  return usedWidth + 2 * preset.marginXMm <= A4.widthMm && usedHeight + 2 * preset.marginYMm <= A4.heightMm;
+}
+
+/** Tamanho do QR dentro da etiqueta: quadrado, com folga para o texto. */
+export function qrSizeMm(preset: LabelPreset): number {
+  const byHeight = preset.heightMm - 4;
+  const byWidth = preset.columns === 1 ? preset.widthMm * 0.5 : preset.widthMm * 0.42;
+  return Math.max(14, Math.min(byHeight, byWidth));
+}
+
+export function chunkPages<T>(items: readonly T[], preset: LabelPreset): T[][] {
+  const size = perSheet(preset);
+  const pages: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    pages.push(items.slice(index, index + size));
+  }
+  return pages;
+}

@@ -2,13 +2,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { formatBRL } from '@quanto/core';
 import { useAuth } from '@/lib/auth';
 import { useSync } from '@/lib/useSync';
 import { useFocusReload } from '@/lib/useFocusReload';
 import { countPendingChanges, countRows, countTotalValueCents, lowStockItems } from '@/db/repo';
 import { greeting, relativeTime } from '@/lib/format';
-import { AppText, Badge, Button, Card, Screen } from '@/components/ui';
-import { formatBRL } from '@quanto/core';
+import { AppText, Badge, Button, Card, Screen, SectionTitle } from '@/components/ui';
 import { radius, spacing, usePalette } from '@/theme';
 
 type Counts = {
@@ -19,6 +19,54 @@ type Counts = {
   pending: number;
   valueCents: number;
 };
+
+type ActionTileProps = {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  subtitle: string;
+  onPress: () => void;
+  primary?: boolean;
+};
+
+function ActionTile({ icon, title, subtitle, onPress, primary }: ActionTileProps) {
+  const palette = usePalette();
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flexBasis: '47%',
+        flexGrow: 1,
+        minHeight: 104,
+        justifyContent: 'space-between',
+        gap: spacing.sm,
+        padding: spacing.lg,
+        borderRadius: radius.lg,
+        backgroundColor: primary ? palette.primary : palette.card,
+        borderWidth: 1,
+        borderColor: primary ? palette.primary : palette.border,
+        opacity: pressed ? 0.82 : 1,
+      })}
+    >
+      <Ionicons name={icon} size={26} color={primary ? palette.primaryText : palette.primary} />
+      <View style={{ gap: 2 }}>
+        <AppText
+          style={{ fontWeight: '700', fontSize: 16 }}
+          color={primary ? palette.primaryText : palette.text}
+        >
+          {title}
+        </AppText>
+        <AppText
+          variant="caption"
+          color={primary ? `${palette.primaryText}CC` : palette.textMuted}
+          numberOfLines={2}
+        >
+          {subtitle}
+        </AppText>
+      </View>
+    </Pressable>
+  );
+}
 
 export default function DashboardScreen() {
   const { state } = useAuth();
@@ -55,10 +103,10 @@ export default function DashboardScreen() {
   if (!session) return null;
 
   const stats = [
-    { label: 'Locais', value: counts.locations, icon: 'map-outline' as const },
-    { label: 'Categorias', value: counts.categories, icon: 'pricetags-outline' as const },
-    { label: 'Itens', value: counts.items, icon: 'cube-outline' as const },
-    { label: 'Bens', value: counts.assets, icon: 'construct-outline' as const },
+    { label: 'itens', value: counts.items },
+    { label: 'bens', value: counts.assets },
+    { label: 'locais', value: counts.locations },
+    { label: 'categorias', value: counts.categories },
   ];
 
   return (
@@ -72,35 +120,59 @@ export default function DashboardScreen() {
       </View>
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md }}>
+        <ActionTile
+          primary
+          icon="scan-outline"
+          title="Escanear"
+          subtitle="código de barras ou etiqueta"
+          onPress={() => router.push('/scan')}
+        />
+        <ActionTile
+          icon="remove-circle-outline"
+          title="Usar item"
+          subtitle="dá baixa no estoque"
+          onPress={() => router.push('/pick-item?type=consume')}
+        />
+        <ActionTile
+          icon="add-circle-outline"
+          title="Dar entrada"
+          subtitle="compra ou recebido"
+          onPress={() => router.push('/pick-item?type=in')}
+        />
+        <ActionTile
+          icon="qr-code-outline"
+          title="Imprimir etiquetas"
+          subtitle="QR para caixas e potes"
+          onPress={() => router.push('/print')}
+        />
+      </View>
+
+      <View style={{ flexDirection: 'row', gap: spacing.sm }}>
         {stats.map((stat) => (
           <View
             key={stat.label}
             style={{
-              flexBasis: '47%',
-              flexGrow: 1,
+              flex: 1,
               backgroundColor: palette.card,
-              borderRadius: radius.lg,
+              borderRadius: radius.md,
               borderWidth: 1,
               borderColor: palette.border,
-              padding: spacing.lg,
-              gap: spacing.xs,
+              paddingVertical: spacing.md,
+              alignItems: 'center',
+              gap: 2,
             }}
           >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
-              <Ionicons name={stat.icon} color={palette.textMuted} size={14} />
-              <AppText variant="caption">{stat.label}</AppText>
-            </View>
-            <AppText variant="title">{stat.value}</AppText>
+            <AppText style={{ fontSize: 20, fontWeight: '700' }}>{stat.value}</AppText>
+            <AppText variant="caption">{stat.label}</AppText>
           </View>
         ))}
       </View>
 
       {lowStock.length > 0 ? (
         <Card>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <AppText variant="subtitle">Para comprar</AppText>
-            <Badge text={`${lowStock.length}`} tone="warning" />
-          </View>
+          <SectionTitle action={<Badge text={`${lowStock.length}`} tone="warning" />}>
+            Para comprar
+          </SectionTitle>
           {lowStock.slice(0, 5).map((item) => (
             <Pressable
               key={item.id}
@@ -150,7 +222,11 @@ export default function DashboardScreen() {
             : 'Tudo enviado para a casa'}
         </AppText>
 
-        {sync.error ? <AppText variant="caption" color={palette.danger}>{sync.error}</AppText> : null}
+        {sync.error ? (
+          <AppText variant="caption" color={palette.danger}>
+            {sync.error}
+          </AppText>
+        ) : null}
 
         <Button
           title="Sincronizar agora"
@@ -158,13 +234,6 @@ export default function DashboardScreen() {
           onPress={() => void sync.run()}
           loading={sync.running}
         />
-      </Card>
-
-      <Card>
-        <AppText variant="subtitle">Próximos passos</AppText>
-        <AppText variant="caption">
-          Catálogo de itens e bens chega na F1. Leitura de código de barras e etiquetas QR, nas F2 e F4.
-        </AppText>
       </Card>
     </Screen>
   );

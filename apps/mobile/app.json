@@ -49,11 +49,12 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "O Quanto usa a c\u00e2mera para ler c\u00f3digos de barras e etiquetas QR dos seus itens.",
+          "cameraPermission": "O Quanto usa a câmera para ler códigos de barras e etiquetas QR dos seus itens.",
           "barcodeScannerEnabled": true
         }
       ],
-      "expo-audio"
+      "expo-audio",
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": false
