@@ -22,7 +22,9 @@
         "backgroundColor": "#0F4C4C",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "permissions": ["android.permission.USE_BIOMETRIC"]
+      "permissions": [
+        "android.permission.USE_BIOMETRIC"
+      ]
     },
     "plugins": [
       "expo-router",
@@ -32,6 +34,14 @@
         "expo-local-authentication",
         {
           "faceIDPermission": "Permita que o Quanto use sua biometria para desbloquear o app."
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
         }
       ]
     ],

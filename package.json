@@ -2,16 +2,19 @@
   "name": "quanto",
   "private": true,
   "version": "0.1.0",
-  "description": "Inventário de patrimônio doméstico — app Expo + servidor próprio",
+  "description": "Invent\u00e1rio de patrim\u00f4nio dom\u00e9stico \u2014 app Expo + servidor pr\u00f3prio",
   "workspaces": [
     "apps/mobile",
     "packages/core"
   ],
   "scripts": {
+    "dev": "node scripts/dev.mjs",
     "dev:mobile": "npm run start -w @quanto/mobile",
     "dev:server": "npm run dev --prefix apps/server",
     "server:install": "npm install --prefix apps/server",
+    "android": "npm run android -w @quanto/mobile",
     "typecheck": "npm run typecheck --workspaces --if-present && npm run typecheck --prefix apps/server",
+    "smoke": "npm run smoke --prefix apps/server --",
     "migrate": "npm run migrate --prefix apps/server"
   },
   "engines": {

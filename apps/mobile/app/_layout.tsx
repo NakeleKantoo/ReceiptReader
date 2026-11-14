@@ -38,9 +38,14 @@ function Shell() {
           contentStyle: { backgroundColor: palette.bg },
         }}
       >
+        <Stack.Protected guard={state.status === 'needs-server'}>
+          <Stack.Screen name="server" />
+        </Stack.Protected>
+
         <Stack.Protected guard={state.status === 'authenticated'}>
           <Stack.Screen name="(tabs)" />
         </Stack.Protected>
+
         <Stack.Protected guard={state.status === 'anonymous'}>
           <Stack.Screen name="login" />
           <Stack.Screen name="setup" />

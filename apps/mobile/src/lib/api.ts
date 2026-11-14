@@ -3,9 +3,19 @@
  * `code: 'offline'`, e a tela decide se mostra aviso ou segue com o banco local.
  */
 
-const FALLBACK_URL = 'https://quanto.leonnaviegas.dev.br';
+/**
+ * O servidor é configurável em runtime (self-hosted): a tela inicial do app pede
+ * o endereço e guarda no SecureStore. Nada de URL fixa no bundle.
+ */
+let apiBaseUrl = '';
 
-export const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? FALLBACK_URL).replace(/\/+$/, '');
+export function setApiBaseUrl(url: string): void {
+  apiBaseUrl = url.replace(/\/+$/, '');
+}
+
+export function getApiBaseUrl(): string {
+  return apiBaseUrl;
+}
 
 export class ApiError extends Error {
   constructor(
@@ -43,7 +53,9 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 15000);
 
   try {
-    const response = await fetch(`${API_URL}${path}`, {
+    if (!apiBaseUrl) throw new ApiError(0, 'Servidor não configurado', 'no_server');
+
+    const response = await fetch(`${apiBaseUrl}${path}`, {
       method: options.method ?? 'GET',
       headers: {
         'content-type': 'application/json',
@@ -124,7 +136,31 @@ export type AuthResponse = {
   household: HouseholdSummary;
 };
 
-export const getServerStatus = () => api<ServerStatus>('/api/public/status', { timeoutMs: 8000 });
+/** `baseUrl` permite testar um endereço antes de salvar. */
+export async function getServerStatus(baseUrl?: string): Promise<ServerStatus> {
+  if (baseUrl) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
+    try {
+      const response = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/public/status`, {
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new ApiError(response.status, `Servidor respondeu ${response.status}`);
+      return (await response.json()) as ServerStatus;
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      if ((error as Error)?.name === 'AbortError') {
+        throw new ApiError(0, 'O servidor demorou para responder', 'timeout');
+      }
+      throw new ApiError(0, 'Não foi possível falar com esse endereço', 'offline');
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  return api<ServerStatus>('/api/public/status', { timeoutMs: 8000 });
+}
 
 export const apiLogin = (secret: string, deviceName?: string) =>
   api<AuthResponse>('/api/auth/login', { method: 'POST', body: { secret, deviceName } });

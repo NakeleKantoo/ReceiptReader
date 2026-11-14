@@ -16,7 +16,7 @@ import { AppText, Badge, Button, Card, Divider, ErrorBanner, Screen } from '@/co
 import { spacing, usePalette } from '@/theme';
 
 export default function SettingsScreen() {
-  const { state, token, logout, updateHousehold } = useAuth();
+  const { state, token, logout, updateHousehold, serverUrl, forgetServer } = useAuth();
   const palette = usePalette();
   const sync = useSync();
   const [members, setMembers] = useState<Member[]>([]);
@@ -181,6 +181,31 @@ export default function SettingsScreen() {
           variant="secondary"
           loading={sync.running}
           onPress={() => void sync.run()}
+        />
+      </Card>
+
+      <Card>
+        <AppText variant="subtitle">Servidor</AppText>
+        <AppText variant="mono" selectable style={{ fontSize: 13 }}>
+          {serverUrl}
+        </AppText>
+        <AppText variant="caption">
+          Os dados da casa ficam nesse endereço. Trocar de servidor não apaga o que já está no
+          aparelho.
+        </AppText>
+        <Button
+          title="Trocar servidor"
+          variant="secondary"
+          onPress={() =>
+            Alert.alert(
+              'Trocar servidor',
+              'Você vai voltar para a tela de endereço e precisará entrar de novo.',
+              [
+                { text: 'Cancelar', style: 'cancel' },
+                { text: 'Trocar', style: 'destructive', onPress: () => void forgetServer() },
+              ],
+            )
+          }
         />
       </Card>
 

@@ -11,10 +11,18 @@ import {
   apiLogout,
   apiMe,
   getServerStatus,
+  setApiBaseUrl,
   type AuthUser,
   type HouseholdSummary,
   type ServerStatus,
 } from '@/lib/api';
+import {
+  SUGGESTED_SERVER_URL,
+  clearServerUrl,
+  loadServerUrl,
+  normalizeServerUrl,
+  saveServerUrl,
+} from '@/lib/server-config';
 
 const SESSION_KEY = 'quanto.session';
 
@@ -26,15 +34,21 @@ export type Session = {
 
 type AuthState =
   | { status: 'loading' }
+  /** primeiro passo do app: qual servidor? */
+  | { status: 'needs-server' }
   | { status: 'locked'; session: Session }
-  | { status: 'anonymous'; session: null }
+  | { status: 'anonymous' }
   | { status: 'authenticated'; session: Session };
 
 type AuthContextValue = {
   state: AuthState;
+  serverUrl: string;
+  suggestedServerUrl: string;
   server: ServerStatus | null;
   serverError: string | null;
   biometricAvailable: boolean;
+  configureServer: (url: string) => Promise<ServerStatus>;
+  forgetServer: () => Promise<void>;
   login: (secret: string) => Promise<void>;
   bootstrap: (input: { householdName: string; name: string; secret: string }) => Promise<void>;
   join: (input: { inviteCode: string; name: string; secret: string }) => Promise<void>;
@@ -48,7 +62,8 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const deviceName = (): string => Constants.deviceName ?? `Android ${Constants.platform?.android?.version ?? ''}`.trim();
+const deviceName = (): string =>
+  Constants.deviceName ?? `Android ${Constants.platform?.android?.version ?? ''}`.trim();
 
 async function readSession(): Promise<Session | null> {
   const raw = await SecureStore.getItemAsync(SESSION_KEY);
@@ -70,6 +85,7 @@ async function clearSession(): Promise<void> {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({ status: 'loading' });
+  const [serverUrl, setServerUrl] = useState('');
   const [server, setServer] = useState<ServerStatus | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
@@ -97,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
         await clearSession();
-        if (mounted.current) setState({ status: 'anonymous', session: null });
+        if (mounted.current) setState({ status: 'anonymous' });
       }
       // offline: segue com a sessão local (o app funciona sem servidor)
     }
@@ -107,24 +123,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     mounted.current = true;
 
     (async () => {
-      const [hasHardware, enrolled, session] = await Promise.all([
+      const [hasHardware, enrolled, storedUrl] = await Promise.all([
         LocalAuthentication.hasHardwareAsync(),
         LocalAuthentication.isEnrolledAsync(),
-        readSession(),
+        loadServerUrl(),
       ]);
 
-      const biometric = hasHardware && enrolled;
-      if (mounted.current) setBiometricAvailable(biometric);
+      if (mounted.current) setBiometricAvailable(hasHardware && enrolled);
+
+      if (!storedUrl) {
+        if (mounted.current) setState({ status: 'needs-server' });
+        return;
+      }
+
+      setApiBaseUrl(storedUrl);
+      if (mounted.current) setServerUrl(storedUrl);
+
+      const session = await readSession();
 
       if (session) {
-        if (biometric) {
+        if (hasHardware && enrolled) {
           setState({ status: 'locked', session });
         } else {
           setState({ status: 'authenticated', session });
         }
         void validateSession(session);
       } else {
-        setState({ status: 'anonymous', session: null });
+        setState({ status: 'anonymous' });
         void refreshServerStatus();
       }
     })();
@@ -133,6 +158,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       mounted.current = false;
     };
   }, [refreshServerStatus, validateSession]);
+
+  /**
+   * Testa o endereço ANTES de salvar: apontar para um servidor morto é o erro
+   * mais comum de self-hosted, e a mensagem precisa ser clara.
+   */
+  const configureServer = useCallback(async (input: string): Promise<ServerStatus> => {
+    const normalized = normalizeServerUrl(input);
+    if (!normalized) throw new ApiError(0, 'Endereço inválido. Exemplo: http://192.168.1.5:3030');
+
+    const status = await getServerStatus(normalized);
+
+    // trocar de servidor nunca reaproveita sessão de outro
+    await clearSession();
+    await saveServerUrl(normalized);
+    setApiBaseUrl(normalized);
+    setServerUrl(normalized);
+    setServer(status);
+    setServerError(null);
+    setState({ status: 'anonymous' });
+
+    return status;
+  }, []);
+
+  const forgetServer = useCallback(async () => {
+    await clearSession();
+    await clearServerUrl();
+    setApiBaseUrl('');
+    setServerUrl('');
+    setServer(null);
+    setState({ status: 'needs-server' });
+  }, []);
 
   const unlock = useCallback(async () => {
     if (state.status !== 'locked') return false;
@@ -154,7 +210,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const usePin = useCallback(async () => {
     if (state.status !== 'locked') return;
     await clearSession();
-    setState({ status: 'anonymous', session: null });
+    setState({ status: 'anonymous' });
     void refreshServerStatus();
   }, [state, refreshServerStatus]);
 
@@ -188,7 +244,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(async () => {
-    const token = state.status === 'authenticated' || state.status === 'locked' ? state.session.token : null;
+    const token =
+      state.status === 'authenticated' || state.status === 'locked' ? state.session.token : null;
 
     if (token) {
       try {
@@ -199,7 +256,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     await clearSession();
-    setState({ status: 'anonymous', session: null });
+    setState({ status: 'anonymous' });
     void refreshServerStatus();
   }, [state, refreshServerStatus]);
 
@@ -218,9 +275,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextValue>(
     () => ({
       state,
+      serverUrl,
+      suggestedServerUrl: SUGGESTED_SERVER_URL,
       server,
       serverError,
       biometricAvailable,
+      configureServer,
+      forgetServer,
       login,
       bootstrap,
       join,
@@ -233,9 +294,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }),
     [
       state,
+      serverUrl,
       server,
       serverError,
       biometricAvailable,
+      configureServer,
+      forgetServer,
       login,
       bootstrap,
       join,

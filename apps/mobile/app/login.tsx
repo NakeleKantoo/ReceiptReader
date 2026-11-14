@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth';
 import { ApiError } from '@/lib/api';
@@ -7,8 +7,9 @@ import { AppText, Button, Card, ErrorBanner, Field, Screen } from '@/components/
 import { spacing } from '@/theme';
 
 export default function LoginScreen() {
-  const { login, server, serverError, refreshServerStatus } = useAuth();
+  const { login, server, serverError, refreshServerStatus, serverUrl, forgetServer } = useAuth();
   const router = useRouter();
+
   const [secret, setSecret] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -23,7 +24,9 @@ export default function LoginScreen() {
       await login(secret);
     } catch (caught) {
       const apiError = caught as ApiError;
-      setError(apiError.isOffline ? 'Sem conexão. Verifique a rede e tente de novo.' : apiError.message);
+      setError(
+        apiError.isOffline ? 'Sem conexão com o servidor. Verifique a rede e tente de novo.' : apiError.message,
+      );
     } finally {
       setLoading(false);
     }
@@ -33,7 +36,7 @@ export default function LoginScreen() {
     <Screen>
       <View style={{ gap: spacing.xs, paddingTop: spacing.xl }}>
         <AppText variant="title">Quanto</AppText>
-        <AppText variant="caption">O que a sua casa tem, onde está e com quem está.</AppText>
+        <AppText variant="caption">{serverUrl}</AppText>
       </View>
 
       {serverError ? (
@@ -41,22 +44,30 @@ export default function LoginScreen() {
           <AppText variant="subtitle">Servidor inacessível</AppText>
           <AppText variant="caption">{serverError}</AppText>
           <Button title="Tentar de novo" variant="secondary" onPress={() => void refreshServerStatus()} />
-        </Card>
-      ) : null}
-
-      {server && !server.initialized ? (
-        <Card>
-          <AppText variant="subtitle">Primeira vez aqui</AppText>
-          <AppText variant="caption">
-            Nenhuma casa cadastrada neste servidor. Crie a sua para começar.
-          </AppText>
-          <Button title="Criar a casa" onPress={() => router.push('/setup')} />
+          <Button title="Trocar servidor" variant="ghost" onPress={() => void forgetServer()} />
         </Card>
       ) : null}
 
       {!server && !serverError ? (
         <Card>
           <AppText variant="caption">Falando com o servidor...</AppText>
+        </Card>
+      ) : null}
+
+      {/* Servidor no ar, mas sem casa: é aqui que nasce a casa. */}
+      {server && !server.initialized ? (
+        <Card>
+          <AppText variant="subtitle">Este servidor está vazio</AppText>
+          <AppText variant="caption">
+            Nenhuma casa foi criada aqui ainda. Quem criar vira o administrador e depois convida as
+            outras pessoas.
+          </AppText>
+          <Button title="Criar a casa" onPress={() => router.push('/setup')} />
+          <Button
+            title="Já tenho um convite"
+            variant="ghost"
+            onPress={() => router.push('/join')}
+          />
         </Card>
       ) : null}
 
@@ -95,9 +106,12 @@ export default function LoginScreen() {
       ) : null}
 
       <View style={{ flex: 1 }} />
-      <AppText variant="caption" style={{ textAlign: 'center' }}>
-        Cada pessoa da casa usa o próprio PIN.
-      </AppText>
+
+      <Pressable onPress={() => void forgetServer()} hitSlop={8}>
+        <AppText variant="caption" style={{ textAlign: 'center' }}>
+          Cada pessoa usa o próprio PIN · trocar servidor
+        </AppText>
+      </Pressable>
     </Screen>
   );
 }

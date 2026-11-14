@@ -2,10 +2,74 @@
 
 Inventário de patrimônio doméstico: o que a sua casa tem, onde está, com quem está e por quanto.
 
-App Android em **React Native + Expo**, servidor próprio em **Node + SQLite**. Funciona **offline** —
-o servidor existe para a família compartilhar dados entre aparelhos.
+**Self-hosted**: o app Android (React Native + Expo) aponta para **o seu** servidor (Node + SQLite).
+Sem nuvem de terceiros, sem telemetria, sem conta em SaaS — um servidor, uma família (até 5 pessoas).
 
 > Plano completo por fases em [`PLANO.md`](./PLANO.md). Este README cobre o que **já funciona (F0)**.
+
+---
+
+## Começar em 30 segundos
+
+```bash
+npm install            # app + core
+npm run server:install # dependências do servidor (uma vez)
+npm run dev            # sobe API + Expo juntos
+```
+
+`npm run dev` detecta o IP da máquina na LAN (aqui: `192.168.1.5`), sobe a API na porta `3030`
+com `HOST=0.0.0.0` e abre o Expo já apontando o app para esse endereço:
+
+```
+  API      http://192.168.1.5:3030
+  App      Expo Go → escaneie o QR
+  Endereço http://192.168.1.5:3030   (digite isso na primeira tela do app)
+```
+
+Para forçar outro endereço:
+
+```bash
+API_HOST=192.168.1.5 npm run dev
+API_URL=http://10.0.0.9:3030 npm run dev
+```
+
+Celular e computador precisam estar na **mesma rede Wi-Fi**.
+
+---
+
+## Primeira execução: escolher servidor → criar casa
+
+O app abre na tela **Servidor da casa**. É de propósito: o Quanto é self-hosted, então o endereço
+vem antes de qualquer login. Ele testa a conexão antes de salvar.
+
+```
+1. Abrir o app
+2. Endereço do servidor  →  http://192.168.1.5:3030  →  Conectar
+3. Servidor respondeu "nenhuma casa criada"
+4. Criar a casa:
+     nome da casa   →  "Casa da Vila"
+     seu nome       →  "Ana"
+     PIN            →  6 dígitos (ou senha de 8+)
+5. Pronto: você é o administrador
+6. Ajustes → Convidar pessoa → código de 6 caracteres
+7. Cada pessoa instala o app, aponta para o MESMO endereço,
+   escolhe "Tenho um código de convite" e define um PIN diferente
+```
+
+O PIN é o identificador da conta (não existe e-mail): o servidor compara o segredo contra todas as
+contas da casa, então **o PIN precisa ser único**. Depois do primeiro login o app abre por biometria.
+
+Só pode existir **uma casa por servidor** — é um servidor da casa, não um SaaS.
+
+<details>
+<summary>Criando a casa direto pela API (sem o app)</summary>
+
+```bash
+curl -X POST http://192.168.1.5:3030/api/household \
+  -H 'content-type: application/json' \
+  -d '{"householdName":"Casa da Vila","name":"Ana","secret":"123456"}'
+```
+</details>
 
 ---
 
@@ -17,6 +81,8 @@ apps/
   server/    API Express + better-sqlite3
 packages/
   core/      DDL compartilhado, tipos das linhas, contratos zod, unidades e dinheiro
+scripts/
+  dev.mjs    sobe API + Expo com o IP da LAN
 ```
 
 `packages/core` é a fonte única: a **mesma** DDL roda no SQLite do aparelho e no do servidor.
@@ -24,34 +90,29 @@ Quantidade é sempre inteiro na unidade base (`500 g`) e dinheiro é sempre cent
 
 ---
 
-## Servidor
-
-### Rodando local
-
-```bash
-npm install                      # app + core
-npm run server:install           # dependências do servidor
-cp apps/server/.env.example apps/server/.env
-npm run dev:server               # http://localhost:3030
-```
-
-### Rodando com Docker
+## Servidor em produção
 
 ```bash
 docker compose up -d --build
 docker compose logs -f quanto
 ```
 
-O banco fica em `./data/quanto.db` (volume). Backup:
+Roda como usuário **não-root** (`UID 1000`), então o banco em `./data/quanto.db` fica com o dono do
+host. Se o seu UID não for 1000:
+
+```bash
+mkdir -p data && sudo chown -R 1000:1000 data
+```
+
+Backup:
 
 ```bash
 docker compose exec quanto node -e "require('better-sqlite3')('/data/quanto.db').exec(\"VACUUM INTO '/data/backup-' + Date.now() + '.db'\")"
 ```
 
-### HTTPS (necessário para o app fora da rede local)
+### HTTPS (para usar fora de casa)
 
-O app já aponta para `https://quanto.leonnaviegas.dev.br`. Com **Caddy**, três linhas resolvem
-(certificado Let's Encrypt automático):
+Com **Caddy**, três linhas (certificado automático):
 
 ```caddyfile
 quanto.leonnaviegas.dev.br {
@@ -73,13 +134,14 @@ server {
 }
 ```
 
-> `TRUST_PROXY=1` já está ligado, então o rate limit usa o IP real do cliente.
+Aí, na tela de servidor do app, use `https://quanto.leonnaviegas.dev.br`.
 
-### Variáveis
+### Variáveis do servidor
 
 | Variável | Default | Para que serve |
 |---|---|---|
 | `PORT` | `3030` | porta |
+| `HOST` | `0.0.0.0` | interface (precisa ser 0.0.0.0 para o celular alcançar) |
 | `DATABASE_PATH` | `./data/quanto.db` | arquivo SQLite |
 | `SESSION_TTL_DAYS` | `90` | validade da sessão por aparelho |
 | `INVITE_TTL_HOURS` | `24` | validade do código de convite |
@@ -95,29 +157,30 @@ DATABASE_PATH=./data/smoke.db PORT=3999 npm start &
 npm run smoke -- http://127.0.0.1:3999
 ```
 
-Cobre 39 asserções: bootstrap, convite, login por PIN, unicidade do PIN, sync entre dois membros,
-LWW, tombstones, isolamento por casa, troca de PIN, logout e rate limit.
+39 asserções: bootstrap, convite, login por PIN, unicidade do PIN, sync entre dois membros, LWW,
+tombstones, isolamento por casa, troca de PIN, logout e rate limit.
 
 ---
 
 ## App
 
 ```bash
-cd apps/mobile
-cp .env.example .env     # opcional: aponte para http://192.168.1.4:3030 no dev
-npx expo start
+npm run dev            # recomendado (API + Expo, com o IP certo)
+cd apps/mobile && npx expo start   # só o app
 ```
 
-Abra no **Expo Go** (Android). Para gerar o API:
+APK:
 
 ```bash
 cd apps/mobile
-npx eas build --profile preview --platform android   # gera APK
+npx eas build --profile preview --platform android
 ```
 
-O `eas.json` já define `preview` como APK e `production` como AAB.
+`eas.json` define `preview` → APK e `production` → AAB. **Guarde o keystore do EAS**: trocar de
+keystore impede instalar a atualização por cima do APK antigo.
 
-> **Guarde o keystore do EAS.** Trocar de keystore impede instalar a atualização por cima do APK antigo.
+O `app.json` liga `usesCleartextTraffic`, então `http://` na LAN funciona também no APK — sem isso o
+Android 9+ bloqueia e a falha parece “servidor fora do ar”.
 
 ---
 
@@ -131,9 +194,6 @@ e é ele que identifica a conta:
 - depois do primeiro login o app abre com **biometria** (Keystore/Keychain);
 - 6 dígitos são 10⁶ combinações, então há rate limit: 10 falhas por IP → bloqueio de 15 min;
 - sessão é **token opaco** no `expo-secure-store` (não JWT): revogar é um `UPDATE`.
-
-Entrada de membro: administrador gera um código de 6 caracteres em **Ajustes → Convidar pessoa**;
-a pessoa instala o app, escolhe “Tenho um código de convite”, define nome e PIN.
 
 ---
 
@@ -150,37 +210,40 @@ a pessoa instala o app, escolhe “Tenho um código de convite”, define nome e
 
 ---
 
-## Estado atual (F0 concluída)
+## Estado atual
 
 | Item | Estado |
 |---|---|
 | Monorepo, `packages/core` com DDL + contratos + unidades/dinheiro | ✅ |
 | API: auth por PIN, convite, membros, rate limit, sync | ✅ 39 asserções |
-| App: login, criar casa, entrar com convite, biometria, tema claro/escuro | ✅ |
-| App: locais em árvore, criar/apagar, badge de “não sincronizado” | ✅ |
+| Tela inicial de servidor (self-hosted), com teste de conexão | ✅ |
+| App: criar casa, entrar com convite, biometria, tema claro/escuro | ✅ |
+| App: locais em árvore, criar/apagar offline, badge de “não sincronizado” | ✅ |
 | App: dashboard com contadores e status de sync | ✅ |
-| Docker + healthcheck | ✅ |
+| Docker não-root + healthcheck | ✅ |
 | F1: catálogo de itens e bens (`assets`) | ⏳ |
 | F2: scanner de código de barras/QR | ⏳ |
 | F4: etiquetas QR + impressão | ⏳ |
 
-### Checklist de aceite da F0 (manual, em dois celulares)
+### Checklist de aceite da F0 (manual)
 
-1. `npm run dev:server` no servidor; celular A cria a casa (F1 do app → “Criar a casa”).
-2. Ajustes → **Convidar pessoa** → aparece um código de 6 caracteres.
-3. Celular B → “Tenho um código de convite” → entra com nome e PIN diferente.
-4. Celular A cria “Cozinha” em **Locais** → sincroniza.
-5. Celular B abre **Locais** → “Cozinha” aparece.
-6. Celular B renomeia ninguém ainda (rename chega na F1), mas cria “Despensa” → aparece no A.
-7. Modo avião no B → criar local funciona e mostra “não sincronizado”; ao voltar a rede, sincroniza.
+1. `npm run dev` numa máquina; anote o endereço exibido.
+2. Celular A: abre o app → digita o endereço → Conectar → **Criar a casa**.
+3. Ajustes → **Convidar pessoa** → aparece um código de 6 caracteres.
+4. Celular B: aponta para o **mesmo** endereço → “Tenho um código de convite” → nome + PIN diferente.
+5. Celular A cria “Cozinha” em **Locais** → sincroniza.
+6. Celular B abre **Locais** → “Cozinha” aparece.
+7. Celular B cria “Despensa” offline (modo avião) → mostra “não sincronizado”; volta a rede → sincroniza e aparece no A.
 
 ---
 
 ## Notas de decisão
 
-- **Sem Drizzle.** O `packages/core` publica DDL em SQL puro + tipos TS explícitos. Manter um schema
+- **Servidor é a primeira tela.** App self-hosted não pode ter URL fixa no bundle; o endereço precisa
+  ser escolhido (e trocável) em runtime.
+- **Sem Drizzle.** `packages/core` publica DDL em SQL puro + tipos TS explícitos. Manter um schema
   Drizzle além da DDL criaria duas fontes de verdade divergindo com o tempo.
 - **Sessão opaca em vez de JWT.** Revogar um aparelho perdido é um `UPDATE`; e o app não precisa
   renovar token em background.
 - **`tsx` é dependência de produção** do servidor: roda TypeScript direto, sem etapa de build no Docker.
-- **iOS fora do escopo**: o build precisa de Mac e o alvo é APK Android.
+- **iOS fora do escopo**: build precisa de Mac e o alvo é APK Android.
