@@ -1,7 +1,9 @@
 import { getRandomBytes } from 'expo-crypto';
 import {
+  daysUntil,
   makePublicId,
   normalizeSearch,
+  todayIso,
   type Asset,
   type AssetStatus,
   type BaseUnitName,
@@ -604,6 +606,7 @@ export type MovementInput = {
   assetId?: string | null;
   note?: string | null;
   reversesId?: string | null;
+  lotId?: string | null;
   /** data explícita (usado ao transferir: par de movimentos com o mesmo instante) */
   createdAt?: number;
 };
@@ -613,11 +616,12 @@ function insertMovement(input: MovementInput): string {
   getDatabase().runSync(
     `INSERT INTO movements
        (id, household_id, item_id, asset_id, lot_id, location_id, delta, type, user_id, note, reverses_id, created_at, rev)
-     VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, 0)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
     id,
     getCurrentHousehold(),
     input.itemId,
     input.assetId ?? null,
+    input.lotId ?? null,
     input.locationId ?? null,
     input.delta,
     input.type,
@@ -629,18 +633,51 @@ function insertMovement(input: MovementInput): string {
   return id;
 }
 
-/** Saída para consumo/descarte: delta sempre negativo. */
+/**
+ * Saída para consumo/descarte: delta negativo. Se o item tem lotes, a baixa
+ * segue FEFO — primeiro a vencer primeiro — e pode virar várias linhas.
+ */
 export function registerMovement(input: {
   itemId: string;
   type: MovementType;
   amount: number;
   locationId?: string | null;
   assetId?: string | null;
+  lotId?: string | null;
   note?: string | null;
-}): string {
+}): string[] {
   const amount = Math.abs(input.amount);
   const negative = input.type === 'consume' || input.type === 'discard' || input.type === 'checkout';
-  return insertMovement({ ...input, delta: negative ? -amount : amount });
+
+  if (!negative || input.lotId) {
+    return [insertMovement({ ...input, delta: negative ? -amount : amount })];
+  }
+
+  const lots = listLots(input.itemId).filter((lot) => lot.remaining > 0);
+  if (lots.length === 0) return [insertMovement({ ...input, delta: -amount })];
+
+  const ordered = [...lots].sort((a, b) => {
+    if (a.expiresOn && b.expiresOn) return a.expiresOn.localeCompare(b.expiresOn);
+    if (a.expiresOn) return -1;
+    if (b.expiresOn) return 1;
+    return a.createdAt - b.createdAt;
+  });
+
+  const ids: string[] = [];
+  let left = amount;
+
+  getDatabase().withTransactionSync(() => {
+    for (const lot of ordered) {
+      if (left <= 0) break;
+      const take = Math.min(lot.remaining, left);
+      ids.push(insertMovement({ ...input, delta: -take, lotId: lot.id }));
+      left -= take;
+    }
+    // sobrou consumo além dos lotes registrados
+    if (left > 0) ids.push(insertMovement({ ...input, delta: -left, lotId: null }));
+  });
+
+  return ids;
 }
 
 /** Transferência: par de movimentos com o mesmo instante (o total não muda). */
@@ -851,6 +888,220 @@ export function checkinAsset(assetId: string, locationId?: string | null, note?:
     note,
   });
   syncAssetFromMovements(assetId);
+}
+
+// ─────────────────────────────────────────────── lotes e validade
+
+export type LotRow = {
+  id: string;
+  itemId: string;
+  itemName: string;
+  code: string | null;
+  expiresOn: string | null;
+  receivedOn: string | null;
+  locationId: string | null;
+  /** quanto ainda existe neste lote (soma dos movimentos ligados a ele) */
+  remaining: number;
+  /** unidade base do item, para formatar a quantidade */
+  baseUnit: BaseUnitName;
+  createdAt: number;
+};
+
+const LOT_SELECT = `
+  SELECT l.id, l.item_id, l.code, l.expires_on, l.received_on, l.location_id, l.created_at,
+         i.name AS item_name, i.base_unit AS base_unit,
+         (SELECT COALESCE(SUM(m.delta), 0) FROM movements m WHERE m.lot_id = l.id) AS remaining
+  FROM lots l
+  JOIN items i ON i.id = l.item_id
+  WHERE l.deleted_at IS NULL AND i.deleted_at IS NULL
+`;
+
+function toLot(row: Row): LotRow {
+  return {
+    id: str(row.id),
+    itemId: str(row.item_id),
+    itemName: str(row.item_name),
+    code: strOrNull(row.code),
+    expiresOn: strOrNull(row.expires_on),
+    receivedOn: strOrNull(row.received_on),
+    locationId: strOrNull(row.location_id),
+    remaining: num(row.remaining),
+    baseUnit: (str(row.base_unit) || 'un') as BaseUnitName,
+    createdAt: num(row.created_at),
+  };
+}
+
+export function listLots(itemId?: string): LotRow[] {
+  const rows = itemId
+    ? getDatabase().getAllSync<Row>(
+        `${LOT_SELECT} AND l.item_id = ? ORDER BY l.expires_on IS NULL, l.expires_on`,
+        itemId,
+      )
+    : getDatabase().getAllSync<Row>(
+        `${LOT_SELECT} ORDER BY l.expires_on IS NULL, l.expires_on`,
+      );
+
+  return rows.map(toLot);
+}
+
+/** Lotes com saldo, vencidos ou vencendo em `days` dias. */
+export function expiringLots(days = 7): LotRow[] {
+  return listLots().filter((lot) => {
+    if (lot.remaining <= 0 || !lot.expiresOn) return false;
+    const until = daysUntil(lot.expiresOn);
+    return until !== null && until <= days;
+  });
+}
+
+export function createLot(input: {
+  itemId: string;
+  expiresOn?: string | null;
+  receivedOn?: string | null;
+  code?: string | null;
+  locationId?: string | null;
+}): string {
+  const id = newId();
+  const now = serverNow();
+
+  getDatabase().runSync(
+    `INSERT INTO lots (id, household_id, item_id, code, location_id, received_on, expires_on, deleted_at, created_at, updated_at, rev)
+     VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, 0)`,
+    id,
+    getCurrentHousehold(),
+    input.itemId,
+    input.code?.trim() || null,
+    input.locationId ?? null,
+    input.receivedOn ?? todayIso(),
+    input.expiresOn ?? null,
+    now,
+    now,
+  );
+
+  return id;
+}
+
+export function deleteLot(id: string): void {
+  const now = serverNow();
+  getDatabase().runSync(
+    'UPDATE lots SET deleted_at = ?, updated_at = ?, rev = 0 WHERE id = ?',
+    now,
+    now,
+    id,
+  );
+}
+
+/** Entrada com validade: cria o lote e amarra a movimentação a ele. */
+export function registerEntryWithLot(input: {
+  itemId: string;
+  amount: number;
+  expiresOn?: string | null;
+  locationId?: string | null;
+  note?: string | null;
+}): void {
+  const lotId = input.expiresOn
+    ? createLot({ itemId: input.itemId, expiresOn: input.expiresOn, locationId: input.locationId })
+    : null;
+
+  insertMovement({
+    itemId: input.itemId,
+    delta: Math.abs(input.amount),
+    type: 'in',
+    locationId: input.locationId ?? null,
+    lotId,
+    note: input.note,
+  });
+}
+
+// ─────────────────────────────────────────────── lista de compras
+
+export type ShoppingRow = {
+  id: string;
+  itemId: string | null;
+  label: string;
+  qty: number;
+  doneAt: number | null;
+  note: string | null;
+  unit: BaseUnitName;
+};
+
+export function listShopping(): ShoppingRow[] {
+  return getDatabase()
+    .getAllSync<Row>(
+      `SELECT s.id, s.item_id, s.label, s.qty, s.done_at, s.note, i.name AS item_name, i.base_unit
+       FROM shopping_list s
+       LEFT JOIN items i ON i.id = s.item_id
+       WHERE s.deleted_at IS NULL
+       ORDER BY s.done_at IS NOT NULL, i.name COLLATE NOCASE, s.label COLLATE NOCASE`,
+    )
+    .map((row) => ({
+      id: str(row.id),
+      itemId: strOrNull(row.item_id),
+      label: strOrNull(row.item_name) ?? str(row.label),
+      qty: num(row.qty),
+      doneAt: row.done_at === null ? null : num(row.done_at),
+      note: strOrNull(row.note),
+      unit: (str(row.base_unit) || 'un') as BaseUnitName,
+    }));
+}
+
+export function addShopping(input: { itemId?: string | null; label?: string | null; qty?: number }): void {
+  const now = serverNow();
+  getDatabase().runSync(
+    `INSERT INTO shopping_list (id, household_id, item_id, label, qty, done_at, note, deleted_at, created_at, updated_at, rev)
+     VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, 0)`,
+    newId(),
+    getCurrentHousehold(),
+    input.itemId ?? null,
+    input.label?.trim() || null,
+    input.qty ?? 0,
+    now,
+    now,
+  );
+}
+
+export function setShoppingDone(id: string, done: boolean): void {
+  getDatabase().runSync(
+    'UPDATE shopping_list SET done_at = ?, updated_at = ?, rev = 0 WHERE id = ?',
+    done ? serverNow() : null,
+    serverNow(),
+    id,
+  );
+}
+
+export function deleteShopping(id: string): void {
+  const now = serverNow();
+  getDatabase().runSync(
+    'UPDATE shopping_list SET deleted_at = ?, updated_at = ?, rev = 0 WHERE id = ?',
+    now,
+    now,
+    id,
+  );
+}
+
+/** Itens abaixo do mínimo que ainda não estão na lista. */
+export function shoppingSuggestions(): { itemId: string; name: string; missing: number; unit: BaseUnitName }[] {
+  const open = new Set(listShopping().filter((row) => row.doneAt === null && row.itemId).map((row) => row.itemId));
+
+  return lowStockItems()
+    .filter((item) => !open.has(item.id))
+    .map((item) => {
+      const current = stockFor(item.id).quantity;
+      return {
+        itemId: item.id,
+        name: item.name,
+        missing: Math.max(1, item.minQty - current),
+        unit: item.baseUnit,
+      };
+    });
+}
+
+/** "Comprei": dá entrada no item e fecha a linha da lista. */
+export function markPurchased(row: ShoppingRow): void {
+  if (row.itemId) {
+    const amount = row.qty > 0 ? row.qty : 1;
+    registerMovement({ itemId: row.itemId, type: 'in', amount });
+  }
+  setShoppingDone(row.id, true);
 }
 
 // ─────────────────────────────────────────────── contadores

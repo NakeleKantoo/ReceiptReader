@@ -107,6 +107,47 @@ export const MOVEMENT_LABEL: Record<z.infer<typeof movementTypeSchema>, string> 
 export const INBOUND_TYPES = new Set(['in', 'checkin']);
 export const OUTBOUND_TYPES = new Set(['consume', 'discard', 'checkout']);
 
+/** Dias até `YYYY-MM-DD` (negativo = já passou). null se não houver data. */
+export function daysUntil(date: string | null | undefined): number | null {
+  if (!date) return null;
+  const parts = date.split('-').map(Number);
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) return null;
+
+  const [year, month, day] = parts as [number, number, number];
+  const target = Date.UTC(year, month - 1, day);
+  const now = new Date();
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+
+  return Math.round((target - today) / 86_400_000);
+}
+
+/** Data de hoje no fuso do aparelho, em `YYYY-MM-DD`. */
+export function todayIso(now = new Date()): string {
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export type ExpiryTone = 'expired' | 'soon' | 'ok' | 'none';
+
+export function expiryTone(date: string | null | undefined, soonDays = 7): ExpiryTone {
+  const days = daysUntil(date);
+  if (days === null) return 'none';
+  if (days < 0) return 'expired';
+  if (days <= soonDays) return 'soon';
+  return 'ok';
+}
+
+export function expiryLabel(date: string | null | undefined): string {
+  const days = daysUntil(date);
+  if (days === null) return 'sem validade';
+  if (days === 0) return 'vence hoje';
+  if (days < 0) return `vencido há ${Math.abs(days)}d`;
+  if (days <= 7) return `vence em ${days}d`;
+  return `vence em ${Math.round(days / 30)} ${Math.round(days / 30) === 1 ? 'mês' : 'meses'}`;
+}
+
 export const ASSET_STATUS_LABEL: Record<z.infer<typeof assetStatusSchema>, string> = {
   available: 'disponível',
   in_use: 'em uso',

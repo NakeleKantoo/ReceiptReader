@@ -227,6 +227,7 @@ e é ele que identifica a conta:
 | **F2:** scanner de código de barras/QR, etiqueta QR na tela e consulta de produto | ✅ |
 | **F3:** movimentações, saldo derivado, histórico por item/bem e desfazer | ✅ |
 | **F4:** folhas de etiqueta QR (A4), prévia e PDF compartilhável | ✅ |
+| **F5:** lotes com validade, FEFO, alertas de vencimento e lista de compras | ✅ |
 
 ### F1 — catálogo
 
@@ -287,6 +288,23 @@ validado contra `members` e, se inválido, vira quem sincronizou.
   etiqueta leva nome, subtítulo (categoria/marca/série) e o código legível.
 - Múltiplas folhas: 25 etiquetas na A4260 viram 2 folhas (21 + 4), com quebra de página correta.
 - A prévia usa **o mesmo HTML** que vai para a impressora (WebView), não um desenho parecido.
+
+### F5 — validade e lista de compras
+
+- **Entrada com validade**: no formulário de entrada, informe a data e o app cria um **lote**. O
+  saldo do lote é a soma dos movimentos ligados a ele — nada de contador paralelo.
+- **FEFO**: consumo e descarte saem primeiro do lote que vence antes, e podem virar **várias
+  linhas** se a quantidade atravessar lotes. O total do item continua intacto.
+- **Alertas**: a home mostra uma faixa "Validade" com lotes vencidos e vencendo em 7 dias; na tela
+  do item, o lote vencido ganha um botão **descartar** que baixa o que restou.
+- **Lista de compras**: sugestões automáticas dos itens abaixo do mínimo (com quanto falta),
+  adição manual, e **"comprei"** dá entrada no estoque e fecha a linha.
+- **Home**: quatro ações (Escanear, Usar item, Dar entrada, Lista de compras) + atalhos para
+  etiquetas e novo item, e o card de validade.
+
+Lógica de datas (`daysUntil`, `expiryTone`, `expiryLabel`) fica em `@quanto/core` e é testada:
+vencido, vence hoje, vence em N dias, futuro e sem validade. O FEFO foi verificado com dois lotes
+(vence antes zerado primeiro, total preservado).
 
 ### Checklist de aceite da F0 (manual)
 

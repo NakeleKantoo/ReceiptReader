@@ -14,11 +14,13 @@ import {
   adjustStock,
   getItem,
   listLocations,
+  registerEntryWithLot,
   registerMovement,
   stockFor,
   transferStock,
   type MovementType,
 } from '@/db/repo';
+import { isValidDateString, maskDateInput } from '@/lib/format';
 import {
   AppText,
   Button,
@@ -58,6 +60,7 @@ export default function MovementFormScreen() {
   const [locationId, setLocationId] = useState<string | null>(item?.defaultLocationId ?? null);
   const [targetLocationId, setTargetLocationId] = useState<string | null>(null);
   const [note, setNote] = useState('');
+  const [expiresOn, setExpiresOn] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const locations = useMemo(() => listLocations(), []);
@@ -101,6 +104,9 @@ export default function MovementFormScreen() {
           toLocationId: targetLocationId,
           note,
         });
+      } else if (action === 'in') {
+        if (expiresOn && !isValidDateString(expiresOn)) throw new Error('Validade inválida. Use AAAA-MM-DD.');
+        registerEntryWithLot({ itemId: item.id, amount, expiresOn: expiresOn || null, locationId, note });
       } else {
         registerMovement({
           itemId: item.id,
@@ -243,6 +249,21 @@ export default function MovementFormScreen() {
               </>
             ) : null}
           </Card>
+
+          {action === 'in' ? (
+            <Card>
+              <SectionTitle>Validade</SectionTitle>
+              <Field
+                label="Vence em (opcional)"
+                value={expiresOn}
+                onChangeText={(text) => setExpiresOn(maskDateInput(text))}
+                placeholder="AAAA-MM-DD"
+                keyboardType="number-pad"
+                maxLength={10}
+                hint="Com validade, a entrada vira um lote e o consumo segue a ordem de vencimento."
+              />
+            </Card>
+          ) : null}
 
           <Card>
             <Field

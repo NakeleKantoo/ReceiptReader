@@ -326,6 +326,47 @@ const run = async () => {
   check('movimentação é append-only (reenvio não duplica)', sameMovement.length === 1, sameMovement.length);
   check('movimentação ganha o autor da sessão', sameMovement[0]?.user_id === bootstrap.body?.user?.id, sameMovement[0]);
 
+  console.log('\nF5: lotes e lista de compras');
+  const lotId = crypto.randomUUID();
+  const shoppingId = crypto.randomUUID();
+  const pantryPush = await api('/api/sync', {
+    method: 'POST',
+    token: adminToken,
+    body: syncBody({
+      lots: [
+        {
+          id: lotId,
+          item_id: itemId,
+          code: 'L-01',
+          received_on: '2026-11-01',
+          expires_on: '2026-12-01',
+          created_at: now,
+          updated_at: now,
+        },
+      ],
+      shopping_list: [
+        { id: shoppingId, item_id: itemId, qty: 2000, created_at: now, updated_at: now },
+      ],
+    }),
+  });
+  check('lote e item de lista são aceitos', pantryPush.body?.rejected?.length === 0, pantryPush.body?.rejected);
+
+  const pantryPull = await api('/api/sync', {
+    method: 'POST',
+    token: memberToken,
+    body: syncBody(),
+  });
+  check(
+    'lote sincroniza com a validade',
+    pantryPull.body?.changes?.lots?.find((row) => row.id === lotId)?.expires_on === '2026-12-01',
+    pantryPull.body?.changes?.lots,
+  );
+  check(
+    'lista de compras sincroniza',
+    pantryPull.body?.changes?.shopping_list?.find((row) => row.id === shoppingId)?.qty === 2000,
+    pantryPull.body?.changes?.shopping_list,
+  );
+
   console.log('\nF3: pessoas e autoria');
   const membersPull = await api('/api/sync', {
     method: 'POST',

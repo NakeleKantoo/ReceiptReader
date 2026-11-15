@@ -5,6 +5,8 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   ASSET_STATUS_LABEL,
   MOVEMENT_LABEL,
+  expiryLabel,
+  expiryTone,
   formatBRL,
   formatQty,
   type Asset,
@@ -20,14 +22,17 @@ import {
   listAssets,
   listBarcodes,
   listLocations,
+  listLots,
   listMovements,
   removeAlias,
   removeBarcode,
   revertMovement,
+  registerMovement,
   stockFor,
   type AliasRow,
   type BarcodeRow,
   type ItemRow,
+  type LotRow,
   type MovementRow,
 } from '@/db/repo';
 import {
@@ -44,6 +49,7 @@ import {
   SectionTitle,
 } from '@/components/ui';
 import { MovementList } from '@/components/movements';
+import { displayDate } from '@/lib/format';
 import { radius, spacing, usePalette } from '@/theme';
 
 function InfoRow({ label, value }: { label: string; value: string }) {
@@ -69,6 +75,7 @@ export default function ItemDetailScreen() {
   const [aliases, setAliases] = useState<AliasRow[]>(() => listAliases(itemId));
   const [assets, setAssets] = useState<Asset[]>(() => listAssets(itemId));
   const [movements, setMovements] = useState<MovementRow[]>(() => listMovements({ itemId, limit: 30 }));
+  const [lots, setLots] = useState<LotRow[]>(() => listLots(itemId));
   const [locations] = useState(listLocations());
   const [newBarcode, setNewBarcode] = useState('');
   const [newAlias, setNewAlias] = useState('');
@@ -79,6 +86,7 @@ export default function ItemDetailScreen() {
     setAliases(listAliases(itemId));
     setAssets(listAssets(itemId));
     setMovements(listMovements({ itemId, limit: 30 }));
+    setLots(listLots(itemId));
   }, [itemId]);
 
   useFocusEffect(useCallback(() => reload(), [reload]));
@@ -228,6 +236,97 @@ export default function ItemDetailScreen() {
         {item.notes ? <InfoRow label="Observações" value={item.notes} /> : null}
         {item.rev === 0 ? <AppText variant="caption">alterações não sincronizadas</AppText> : null}
       </Card>
+
+      {item.kind === 'consumable' ? (
+        <Card>
+          <SectionTitle
+            action={
+              <Button
+                title="+ com validade"
+                variant="ghost"
+                onPress={() => goMovement('in')}
+              />
+            }
+          >
+            Lotes e validade
+          </SectionTitle>
+
+          {lots.filter((lot) => lot.remaining > 0).length === 0 ? (
+            <AppText variant="caption">
+              Nenhum lote com saldo. Uma entrada com validade cria um lote, e o consumo passa a
+              sair primeiro do que vence antes.
+            </AppText>
+          ) : (
+            lots
+              .filter((lot) => lot.remaining > 0)
+              .map((lot) => {
+                const tone = expiryTone(lot.expiresOn);
+                return (
+                  <View
+                    key={lot.id}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: spacing.sm,
+                      backgroundColor: palette.cardAlt,
+                      borderRadius: radius.md,
+                      padding: spacing.md,
+                    }}
+                  >
+                    <Ionicons
+                      name={tone === 'expired' ? 'alert-circle' : 'time-outline'}
+                      size={16}
+                      color={
+                        tone === 'expired'
+                          ? palette.danger
+                          : tone === 'soon'
+                            ? palette.warning
+                            : palette.textMuted
+                      }
+                    />
+                    <View style={{ flex: 1, gap: 1 }}>
+                      <AppText variant="caption" style={{ fontWeight: '700' }}>
+                        {expiryLabel(lot.expiresOn)}
+                        {lot.expiresOn ? ` · ${displayDate(lot.expiresOn)}` : ''}
+                      </AppText>
+                      <AppText variant="caption">
+                        restam {formatQty(lot.remaining, item.baseUnit)}
+                      </AppText>
+                    </View>
+                    {tone === 'expired' ? (
+                      <Chip
+                        label="descartar"
+                        onPress={() =>
+                          Alert.alert(
+                            'Descartar lote',
+                            `Baixar ${formatQty(lot.remaining, item.baseUnit)} de "${item.name}"?`,
+                            [
+                              { text: 'Cancelar', style: 'cancel' },
+                              {
+                                text: 'Descartar',
+                                style: 'destructive',
+                                onPress: () =>
+                                  pushAndReload(() =>
+                                    registerMovement({
+                                      itemId: item.id,
+                                      type: 'discard',
+                                      amount: lot.remaining,
+                                      lotId: lot.id,
+                                      note: 'lote vencido',
+                                    }),
+                                  ),
+                              },
+                            ],
+                          )
+                        }
+                      />
+                    ) : null}
+                  </View>
+                );
+              })
+          )}
+        </Card>
+      ) : null}
 
       <Card>
         <SectionTitle action={<AppText variant="caption">{movements.length}</AppText>}>

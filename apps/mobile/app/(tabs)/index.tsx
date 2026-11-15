@@ -2,11 +2,20 @@ import { useCallback, useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { formatBRL } from '@quanto/core';
+import { expiryLabel, expiryTone, formatQty, formatBRL } from '@quanto/core';
 import { useAuth } from '@/lib/auth';
 import { useSync } from '@/lib/useSync';
 import { useFocusReload } from '@/lib/useFocusReload';
-import { countPendingChanges, countRows, countTotalValueCents, lowStockItems } from '@/db/repo';
+import {
+  countPendingChanges,
+  countRows,
+  countTotalValueCents,
+  expiringLots,
+  lowStockItems,
+  listShopping,
+  type LotRow,
+} from '@/db/repo';
+import { displayDate } from '@/lib/format';
 import { greeting, relativeTime } from '@/lib/format';
 import { AppText, Badge, Button, Card, Screen, SectionTitle } from '@/components/ui';
 import { radius, spacing, usePalette } from '@/theme';
@@ -75,6 +84,8 @@ export default function DashboardScreen() {
   const sync = useSync();
 
   const [lowStock, setLowStock] = useState<{ id: string; name: string }[]>([]);
+  const [expiring, setExpiring] = useState<LotRow[]>([]);
+  const [shoppingCount, setShoppingCount] = useState(0);
   const [counts, setCounts] = useState<Counts>({
     locations: 0,
     categories: 0,
@@ -94,6 +105,8 @@ export default function DashboardScreen() {
       valueCents: countTotalValueCents(),
     });
     setLowStock(lowStockItems().map((item) => ({ id: item.id, name: item.name })));
+    setExpiring(expiringLots(7));
+    setShoppingCount(listShopping().filter((row) => row.doneAt === null).length);
   }, []);
 
   useFocusReload(reload);
@@ -140,10 +153,27 @@ export default function DashboardScreen() {
           onPress={() => router.push('/pick-item?type=in')}
         />
         <ActionTile
-          icon="qr-code-outline"
-          title="Imprimir etiquetas"
-          subtitle="QR para caixas e potes"
+          icon="cart-outline"
+          title="Lista de compras"
+          subtitle={
+            shoppingCount > 0 ? `${shoppingCount} para comprar` : 'nada faltando agora'
+          }
+          onPress={() => router.push('/shopping')}
+        />
+      </View>
+
+      <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+        <Button
+          title="Etiquetas QR"
+          variant="secondary"
+          style={{ flex: 1 }}
           onPress={() => router.push('/print')}
+        />
+        <Button
+          title="Novo item"
+          variant="secondary"
+          style={{ flex: 1 }}
+          onPress={() => router.push('/item-form')}
         />
       </View>
 
@@ -167,6 +197,37 @@ export default function DashboardScreen() {
           </View>
         ))}
       </View>
+
+      {expiring.length > 0 ? (
+        <Card>
+          <SectionTitle action={<Badge text={`${expiring.length}`} tone="warning" />}>
+            Validade
+          </SectionTitle>
+          {expiring.slice(0, 5).map((lot) => {
+            const tone = expiryTone(lot.expiresOn);
+            return (
+              <Pressable
+                key={lot.id}
+                onPress={() => router.push(`/item/${lot.itemId}`)}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 6 }}
+              >
+                <Ionicons
+                  name={tone === 'expired' ? 'alert-circle' : 'time-outline'}
+                  size={16}
+                  color={tone === 'expired' ? palette.danger : palette.warning}
+                />
+                <View style={{ flex: 1 }}>
+                  <AppText numberOfLines={1}>{lot.itemName}</AppText>
+                  <AppText variant="caption" color={tone === 'expired' ? palette.danger : undefined}>
+                    {expiryLabel(lot.expiresOn)} · restam {formatQty(lot.remaining, lot.baseUnit)}
+                  </AppText>
+                </View>
+                <AppText variant="caption">{displayDate(lot.expiresOn)}</AppText>
+              </Pressable>
+            );
+          })}
+        </Card>
+      ) : null}
 
       {lowStock.length > 0 ? (
         <Card>
