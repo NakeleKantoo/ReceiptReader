@@ -180,6 +180,8 @@ export type Movement = {
   /** inteiro na unidade base do item: + entra, − sai */
   delta: number;
   type: MovementType;
+  /** total pago nesta movimentação, em centavos (entradas) */
+  priceCents: number;
   userId: string | null;
   note: string | null;
   reversesId: string | null;

@@ -1,6 +1,6 @@
 import { Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { MOVEMENT_LABEL, formatQty, type BaseUnitName } from '@quanto/core';
+import { MOVEMENT_LABEL, formatBRL, formatQty, type BaseUnitName } from '@quanto/core';
 import type { MovementRow } from '@/db/repo';
 import { AppText, Badge } from '@/components/ui';
 import { formatDateTime } from '@/lib/format';
@@ -73,6 +73,7 @@ export function MovementList({
                 {isAssetEvent
                   ? movement.userName ?? 'alguém'
                   : `${sign}${formatQty(unsigned, unit)}`}
+                {movement.priceCents > 0 ? ` · ${formatBRL(movement.priceCents)}` : ''}
                 {movement.locationName ? ` · ${movement.locationName}` : ''}
               </AppText>
 

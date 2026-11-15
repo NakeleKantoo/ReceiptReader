@@ -157,7 +157,7 @@ DATABASE_PATH=./data/smoke.db PORT=3999 npm start &
 npm run smoke -- http://127.0.0.1:3999
 ```
 
-58 asserções: bootstrap, convite, login por PIN, unicidade do PIN, sync entre dois membros, LWW,
+63 asserções: bootstrap, convite, login por PIN, unicidade do PIN, sync entre dois membros, LWW,
 tombstones, append-only das movimentações, autoria preservada/forjada, membros sincronizados sem
 hash de senha, FK inválida recusada com motivo, protocolo incompatível, isolamento por casa,
 troca de PIN, logout e rate limit.
@@ -301,6 +301,11 @@ validado contra `members` e, se inválido, vira quem sincronizou.
   adição manual, e **"comprei"** dá entrada no estoque e fecha a linha.
 - **Home**: quatro ações (Escanear, Usar item, Dar entrada, Lista de compras) + atalhos para
   etiquetas e novo item, e o card de validade.
+- **Comprar pelo scanner**: ao ler o código de um consumível, o app abre direto o formulário de
+  compra — quantidade, validade e **quanto você pagou**. O preço fica no movimento (migração 4),
+  então o custo tem histórico; o item mostra o último preço pago.
+- **Lista de compras**: marcar com o check é só estético — a linha **continua na lista**, riscada,
+  na mesma posição. Quem dá entrada no estoque é o botão "comprei".
 
 Lógica de datas (`daysUntil`, `expiryTone`, `expiryLabel`) fica em `@quanto/core` e é testada:
 vencido, vence hoje, vence em N dias, futuro e sem validade. O FEFO foi verificado com dois lotes

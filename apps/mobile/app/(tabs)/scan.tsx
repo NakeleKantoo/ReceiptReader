@@ -13,13 +13,23 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import { useAudioPlayer } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
-import { ASSET_STATUS_LABEL, formatBRL } from '@quanto/core';
+import {
+  ASSET_STATUS_LABEL,
+  DISPLAY_UNITS,
+  formatBRL,
+  formatQty,
+  parseBRL,
+  parseDecimal,
+  toBaseQty,
+  type BaseUnitName,
+} from '@quanto/core';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSync } from '@/lib/useSync';
-import { addBarcode, listItems, type ItemRow } from '@/db/repo';
+import { addBarcode, listItems, registerEntryWithLot, type ItemRow } from '@/db/repo';
+import { isValidDateString, maskDateInput } from '@/lib/format';
 import { lookupProduct, type ProductInfo } from '@/lib/openfoodfacts';
 import { normalizeScannedCode, resolveScan, type ResolvedScan } from '@/lib/scan';
-import { AppText, Badge, Button, Card, Field, Screen } from '@/components/ui';
+import { AppText, Badge, Button, Card, Chip, Field, Screen } from '@/components/ui';
 import { radius, spacing, usePalette } from '@/theme';
 
 const BARCODE_TYPES = [
@@ -58,6 +68,12 @@ export default function ScanScreen() {
   const [linkQuery, setLinkQuery] = useState('');
   const [candidates, setCandidates] = useState<ItemRow[]>([]);
   const [linkedTo, setLinkedTo] = useState<string | null>(null);
+  const [amountText, setAmountText] = useState('');
+  const [amountSuffix, setAmountSuffix] = useState('');
+  const [expiresOn, setExpiresOn] = useState('');
+  const [priceText, setPriceText] = useState('');
+  const [purchaseError, setPurchaseError] = useState<string | null>(null);
+  const [purchased, setPurchased] = useState<{ amount: number; unit: BaseUnitName; priceCents: number } | null>(null);
 
   const lastScan = useRef<{ code: string; at: number } | null>(null);
 
@@ -95,6 +111,12 @@ export default function ScanScreen() {
       setLinkQuery('');
       setCandidates([]);
       setProduct(null);
+      setAmountText('');
+      setAmountSuffix('');
+      setExpiresOn('');
+      setPriceText('');
+      setPurchaseError(null);
+      setPurchased(null);
 
       const resolved = resolveScan(code);
       setResult(resolved);
@@ -125,6 +147,12 @@ export default function ScanScreen() {
     setLinkQuery('');
     setCandidates([]);
     setLinkedTo(null);
+    setAmountText('');
+    setAmountSuffix('');
+    setExpiresOn('');
+    setPriceText('');
+    setPurchaseError(null);
+    setPurchased(null);
     lastScan.current = null;
   };
 
@@ -312,16 +340,143 @@ export default function ScanScreen() {
 
             <ScrollView contentContainerStyle={{ gap: spacing.md }} keyboardShouldPersistTaps="handled">
               {result?.kind === 'item' ? (
-                <Card>
-                  <AppText variant="subtitle">{result.item.name}</AppText>
-                  <AppText variant="caption">
-                    {[result.item.brand, result.item.categoryName].filter(Boolean).join(' · ') ||
-                      'sem marca'}
-                  </AppText>
-                  <AppText variant="mono" style={{ fontSize: 12 }} selectable>
-                    {result.code}
-                  </AppText>
-                </Card>
+                <>
+                  <Card>
+                    <AppText variant="subtitle">{result.item.name}</AppText>
+                    <AppText variant="caption">
+                      {[result.item.brand, result.item.categoryName].filter(Boolean).join(' · ') ||
+                        'sem marca'}
+                    </AppText>
+                    <AppText variant="mono" style={{ fontSize: 12 }} selectable>
+                      {result.code}
+                    </AppText>
+                  </Card>
+
+                  {result.item.kind === 'consumable' ? (
+                    purchased ? (
+                      <Card>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+                          <Ionicons name="checkmark-circle" size={20} color={palette.primary} />
+                          <AppText variant="subtitle">Compra registrada</AppText>
+                        </View>
+                        <AppText variant="caption">
+                          {formatQty(purchased.amount, purchased.unit)} de {result.item.name}
+                          {purchased.priceCents > 0 ? ` · ${formatBRL(purchased.priceCents)}` : ''}
+                          {expiresOn ? ` · vence ${expiresOn}` : ''}
+                        </AppText>
+                      </Card>
+                    ) : (
+                      <Card>
+                        <AppText variant="subtitle">Registrar compra</AppText>
+
+                        <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-end' }}>
+                          <View style={{ flex: 1 }}>
+                            <Field
+                              label="Quanto comprei"
+                              value={amountText}
+                              onChangeText={setAmountText}
+                              placeholder="0"
+                              keyboardType="decimal-pad"
+                              autoFocus
+                            />
+                          </View>
+
+                          {DISPLAY_UNITS[result.item.baseUnit].length > 1 ? (
+                            <View style={{ flexDirection: 'row', gap: spacing.xs, paddingBottom: 4 }}>
+                              {DISPLAY_UNITS[result.item.baseUnit].map((option) => (
+                                <Chip
+                                  key={option.suffix}
+                                  label={option.suffix}
+                                  active={
+                                    (amountSuffix || DISPLAY_UNITS[result.item.baseUnit][0]!.suffix) ===
+                                    option.suffix
+                                  }
+                                  onPress={() => setAmountSuffix(option.suffix)}
+                                />
+                              ))}
+                            </View>
+                          ) : (
+                            <AppText variant="caption" style={{ paddingBottom: 14 }}>
+                              {result.item.baseUnit}
+                            </AppText>
+                          )}
+                        </View>
+
+                        <Field
+                          label="Vence em (opcional)"
+                          value={expiresOn}
+                          onChangeText={(text) => setExpiresOn(maskDateInput(text))}
+                          placeholder="AAAA-MM-DD"
+                          keyboardType="number-pad"
+                          maxLength={10}
+                        />
+
+                        <Field
+                          label="Quanto paguei (opcional)"
+                          value={priceText}
+                          onChangeText={setPriceText}
+                          placeholder="0,00"
+                          keyboardType="decimal-pad"
+                          hint={
+                            parseBRL(priceText) > 0 ? formatBRL(parseBRL(priceText)) : undefined
+                          }
+                        />
+
+                        {purchaseError ? (
+                          <AppText variant="caption" color={palette.danger}>
+                            {purchaseError}
+                          </AppText>
+                        ) : null}
+
+                        <Button
+                          title="Comprei"
+                          onPress={() => {
+                            const suffix =
+                              amountSuffix || DISPLAY_UNITS[result.item.baseUnit][0]!.suffix;
+                            const amount = toBaseQty(parseDecimal(amountText), result.item.baseUnit, suffix);
+
+                            if (!amountText.trim() || !Number.isFinite(amount) || amount <= 0) {
+                              setPurchaseError('Informe a quantidade comprada.');
+                              return;
+                            }
+                            if (expiresOn && !isValidDateString(expiresOn)) {
+                              setPurchaseError('Validade inválida. Use AAAA-MM-DD.');
+                              return;
+                            }
+
+                            registerEntryWithLot({
+                              itemId: result.item.id,
+                              amount,
+                              expiresOn: expiresOn || null,
+                              locationId: result.item.defaultLocationId,
+                              priceCents: parseBRL(priceText),
+                            });
+
+                            setPurchaseError(null);
+                            setPurchased({ amount, unit: result.item.baseUnit, priceCents: parseBRL(priceText) });
+                            void sync.run();
+                          }}
+                        />
+                      </Card>
+                    )
+                  ) : (
+                    <Card>
+                      <AppText variant="caption">
+                        Item durável: cada unidade é um bem. Use “Adicionar unidade” para registrar
+                        uma nova e “Retirar/Devolver” para o uso.
+                      </AppText>
+                      <Button
+                        title="Adicionar unidade"
+                        variant="secondary"
+                        onPress={() => {
+                          const itemId = result.item.id;
+                          reset();
+                          router.push(`/asset-form?itemId=${itemId}`);
+                        }}
+                      />
+                    </Card>
+                  )}
+                </>
               ) : null}
 
               {result?.kind === 'asset' ? (

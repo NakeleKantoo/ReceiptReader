@@ -325,6 +325,16 @@ INSERT OR IGNORE INTO members (id, household_id, name, role, created_at, updated
 SELECT id, household_id, name, role, created_at, created_at, 0 FROM users;
 `,
   },
+  {
+    version: 4,
+    /**
+     * F5.1: quanto foi pago na entrada. Fica no movimento (não no item) porque o
+     * preço muda a cada compra — e assim o custo tem histórico.
+     */
+    sql: `
+ALTER TABLE movements ADD COLUMN price_cents INTEGER NOT NULL DEFAULT 0;
+`,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;

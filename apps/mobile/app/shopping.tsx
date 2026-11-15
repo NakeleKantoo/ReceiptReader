@@ -43,8 +43,7 @@ export default function ShoppingScreen() {
 
   useFocusEffect(useCallback(() => reload(), [reload]));
 
-  const open = rows.filter((row) => row.doneAt === null);
-  const done = rows.filter((row) => row.doneAt !== null);
+  const checked = rows.filter((row) => row.doneAt !== null).length;
 
   const push = (action: () => void) => {
     action();
@@ -53,10 +52,7 @@ export default function ShoppingScreen() {
   };
 
   const purchase = (row: ShoppingRow) => {
-    if (!row.itemId) {
-      push(() => setShoppingDone(row.id, true));
-      return;
-    }
+    if (!row.itemId) return;
 
     Alert.alert(
       'Comprei',
@@ -77,7 +73,9 @@ export default function ShoppingScreen() {
         <View style={{ flex: 1 }}>
           <AppText variant="title">Lista de compras</AppText>
           <AppText variant="caption">
-            {open.length} {open.length === 1 ? 'item' : 'itens'} para comprar
+            {rows.length === 0
+              ? 'lista vazia'
+              : `${checked} de ${rows.length} marcados · ${rows.length - checked} para pegar`}
           </AppText>
         </View>
       </View>
@@ -113,41 +111,54 @@ export default function ShoppingScreen() {
       <Card>
         <SectionTitle>Para comprar</SectionTitle>
 
-        {open.length === 0 ? (
+        {rows.length === 0 ? (
           <EmptyState title="Lista vazia" description="Adicione um item ou use as sugestões acima." />
         ) : (
-          open.map((row) => (
-            <View
-              key={row.id}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: spacing.sm,
-                backgroundColor: palette.cardAlt,
-                borderRadius: radius.md,
-                padding: spacing.md,
-              }}
-            >
-              <Pressable onPress={() => push(() => setShoppingDone(row.id, true))} hitSlop={8}>
-                <Ionicons name="square-outline" size={20} color={palette.textMuted} />
-              </Pressable>
+          rows.map((row) => {
+            const isDone = row.doneAt !== null;
 
-              <View style={{ flex: 1, gap: 1 }}>
-                <AppText numberOfLines={1}>{row.label}</AppText>
-                {row.qty > 0 ? (
-                  <AppText variant="caption">{formatQty(row.qty, row.unit)}</AppText>
-                ) : null}
+            return (
+              <View
+                key={row.id}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: spacing.sm,
+                  backgroundColor: isDone ? 'transparent' : palette.cardAlt,
+                  borderRadius: radius.md,
+                  padding: spacing.md,
+                  opacity: isDone ? 0.55 : 1,
+                }}
+              >
+                {/* marcar é só estético: a linha continua na lista */}
+                <Pressable onPress={() => push(() => setShoppingDone(row.id, !isDone))} hitSlop={8}>
+                  <Ionicons
+                    name={isDone ? 'checkbox' : 'square-outline'}
+                    size={20}
+                    color={isDone ? palette.primary : palette.textMuted}
+                  />
+                </Pressable>
+
+                <View style={{ flex: 1, gap: 1 }}>
+                  <AppText
+                    numberOfLines={1}
+                    style={isDone ? { textDecorationLine: 'line-through' } : undefined}
+                  >
+                    {row.label}
+                  </AppText>
+                  {row.qty > 0 ? (
+                    <AppText variant="caption">{formatQty(row.qty, row.unit)}</AppText>
+                  ) : null}
+                </View>
+
+                {row.itemId && !isDone ? <Chip label="comprei" onPress={() => purchase(row)} /> : null}
+
+                <Pressable onPress={() => push(() => deleteShopping(row.id))} hitSlop={8}>
+                  <Ionicons name="close" size={18} color={palette.textMuted} />
+                </Pressable>
               </View>
-
-              {row.itemId ? (
-                <Chip label="comprei" onPress={() => purchase(row)} />
-              ) : null}
-
-              <Pressable onPress={() => push(() => deleteShopping(row.id))} hitSlop={8}>
-                <Ionicons name="close" size={18} color={palette.textMuted} />
-              </Pressable>
-            </View>
-          ))
+            );
+          })
         )}
 
         <Divider />
@@ -175,28 +186,6 @@ export default function ShoppingScreen() {
           }}
         />
       </Card>
-
-      {done.length > 0 ? (
-        <Card>
-          <SectionTitle action={<AppText variant="caption">{done.length}</AppText>}>Comprados</SectionTitle>
-          {done.slice(0, 12).map((row) => (
-            <View
-              key={row.id}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 4 }}
-            >
-              <Pressable onPress={() => push(() => setShoppingDone(row.id, false))} hitSlop={8}>
-                <Ionicons name="checkbox" size={20} color={palette.primary} />
-              </Pressable>
-              <AppText variant="caption" style={{ flex: 1, textDecorationLine: 'line-through' }} numberOfLines={1}>
-                {row.label}
-              </AppText>
-              <Pressable onPress={() => push(() => deleteShopping(row.id))} hitSlop={8}>
-                <Ionicons name="close" size={16} color={palette.textMuted} />
-              </Pressable>
-            </View>
-          ))}
-        </Card>
-      ) : null}
 
       <Button title="Voltar" variant="ghost" onPress={() => router.back()} />
     </Screen>

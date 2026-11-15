@@ -24,6 +24,7 @@ import {
   listLocations,
   listLots,
   listMovements,
+  lastPaidPrice,
   removeAlias,
   removeBarcode,
   revertMovement,
@@ -101,6 +102,7 @@ export default function ItemDetailScreen() {
   }
 
   const stock = stockFor(itemId);
+  const paid = lastPaidPrice(itemId);
   const locationName = locations.find((location) => location.id === item.defaultLocationId)?.name ?? '—';
   const lowStock = item.kind === 'consumable' && item.minQty > 0 && stock.quantity <= item.minQty;
 
@@ -233,6 +235,9 @@ export default function ItemDetailScreen() {
           label="Valor dos bens"
           value={formatBRL(assets.reduce((total, asset) => total + asset.valueCents, 0))}
         />
+        {paid ? (
+          <InfoRow label="Último preço pago" value={formatBRL(paid.priceCents)} />
+        ) : null}
         {item.notes ? <InfoRow label="Observações" value={item.notes} /> : null}
         {item.rev === 0 ? <AppText variant="caption">alterações não sincronizadas</AppText> : null}
       </Card>

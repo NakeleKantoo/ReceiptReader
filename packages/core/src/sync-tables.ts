@@ -194,6 +194,7 @@ export const SYNC_TABLES: readonly SyncTableSpec[] = [
       location_id: 'text',
       delta: 'int',
       type: 'text',
+      price_cents: 'int',
       user_id: 'text',
       note: 'text',
       reverses_id: 'text',
@@ -201,6 +202,7 @@ export const SYNC_TABLES: readonly SyncTableSpec[] = [
       rev: 'int',
     },
     required: ['id', 'household_id', 'item_id', 'delta', 'type', 'created_at'],
+    defaults: { price_cents: 0 },
     appendOnly: true,
   },
   {

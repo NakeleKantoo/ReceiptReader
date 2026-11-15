@@ -327,6 +327,36 @@ const run = async () => {
   check('movimentação ganha o autor da sessão', sameMovement[0]?.user_id === bootstrap.body?.user?.id, sameMovement[0]);
 
   console.log('\nF5: lotes e lista de compras');
+  const paidId = crypto.randomUUID();
+  const paidPush = await api('/api/sync', {
+    method: 'POST',
+    token: adminToken,
+    body: syncBody({
+      movements: [
+        {
+          id: paidId,
+          item_id: itemId,
+          delta: 1000,
+          type: 'in',
+          price_cents: 2490,
+          created_at: now,
+        },
+      ],
+    }),
+  });
+  check('entrada com preço é aceita', paidPush.body?.rejected?.length === 0, paidPush.body?.rejected);
+
+  const paidPull = await api('/api/sync', {
+    method: 'POST',
+    token: memberToken,
+    body: syncBody(),
+  });
+  check(
+    'preço pago volta em centavos',
+    paidPull.body?.changes?.movements?.find((row) => row.id === paidId)?.price_cents === 2490,
+    paidPull.body?.changes?.movements?.find((row) => row.id === paidId),
+  );
+
   const lotId = crypto.randomUUID();
   const shoppingId = crypto.randomUUID();
   const pantryPush = await api('/api/sync', {

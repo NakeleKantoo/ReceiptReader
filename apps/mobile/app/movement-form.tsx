@@ -5,6 +5,8 @@ import {
   DISPLAY_UNITS,
   MOVEMENT_LABEL,
   formatQty,
+  formatBRL,
+  parseBRL,
   parseDecimal,
   toBaseQty,
   type BaseUnitName,
@@ -61,6 +63,7 @@ export default function MovementFormScreen() {
   const [targetLocationId, setTargetLocationId] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [expiresOn, setExpiresOn] = useState('');
+  const [price, setPrice] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const locations = useMemo(() => listLocations(), []);
@@ -106,7 +109,14 @@ export default function MovementFormScreen() {
         });
       } else if (action === 'in') {
         if (expiresOn && !isValidDateString(expiresOn)) throw new Error('Validade inválida. Use AAAA-MM-DD.');
-        registerEntryWithLot({ itemId: item.id, amount, expiresOn: expiresOn || null, locationId, note });
+        registerEntryWithLot({
+          itemId: item.id,
+          amount,
+          expiresOn: expiresOn || null,
+          locationId,
+          note,
+          priceCents: parseBRL(price),
+        });
       } else {
         registerMovement({
           itemId: item.id,
@@ -249,6 +259,24 @@ export default function MovementFormScreen() {
               </>
             ) : null}
           </Card>
+
+          {action === 'in' ? (
+            <Card>
+              <SectionTitle>Quanto paguei</SectionTitle>
+              <Field
+                label="Total pago (opcional)"
+                value={price}
+                onChangeText={setPrice}
+                placeholder="0,00"
+                keyboardType="decimal-pad"
+                hint={
+                  parseBRL(price) > 0
+                    ? `${formatBRL(parseBRL(price))}${amount > 0 ? ` · ${formatBRL(Math.round(parseBRL(price) / amount))} por ${activeSuffix}` : ''}`
+                    : 'Serve para acompanhar quanto você paga ao longo do tempo.'
+                }
+              />
+            </Card>
+          ) : null}
 
           {action === 'in' ? (
             <Card>

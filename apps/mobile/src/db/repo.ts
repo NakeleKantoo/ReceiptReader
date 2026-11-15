@@ -538,6 +538,7 @@ export type MovementRow = {
   locationId: string | null;
   delta: number;
   type: MovementType;
+  priceCents: number;
   userId: string | null;
   userName: string | null;
   locationName: string | null;
@@ -565,6 +566,7 @@ function toMovement(row: Row): MovementRow {
     locationId: strOrNull(row.location_id),
     delta: num(row.delta),
     type: str(row.type) as MovementType,
+    priceCents: num(row.price_cents),
     userId: strOrNull(row.user_id),
     userName: strOrNull(row.user_name),
     locationName: strOrNull(row.location_name),
@@ -607,6 +609,8 @@ export type MovementInput = {
   note?: string | null;
   reversesId?: string | null;
   lotId?: string | null;
+  /** total pago, em centavos (entradas) */
+  priceCents?: number;
   /** data explícita (usado ao transferir: par de movimentos com o mesmo instante) */
   createdAt?: number;
 };
@@ -615,8 +619,8 @@ function insertMovement(input: MovementInput): string {
   const id = newId();
   getDatabase().runSync(
     `INSERT INTO movements
-       (id, household_id, item_id, asset_id, lot_id, location_id, delta, type, user_id, note, reverses_id, created_at, rev)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+       (id, household_id, item_id, asset_id, lot_id, location_id, delta, type, price_cents, user_id, note, reverses_id, created_at, rev)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
     id,
     getCurrentHousehold(),
     input.itemId,
@@ -625,6 +629,7 @@ function insertMovement(input: MovementInput): string {
     input.locationId ?? null,
     input.delta,
     input.type,
+    input.priceCents ?? 0,
     getCurrentUser(),
     input.note?.trim() || null,
     input.reversesId ?? null,
@@ -997,6 +1002,7 @@ export function registerEntryWithLot(input: {
   expiresOn?: string | null;
   locationId?: string | null;
   note?: string | null;
+  priceCents?: number;
 }): void {
   const lotId = input.expiresOn
     ? createLot({ itemId: input.itemId, expiresOn: input.expiresOn, locationId: input.locationId })
@@ -1009,7 +1015,20 @@ export function registerEntryWithLot(input: {
     locationId: input.locationId ?? null,
     lotId,
     note: input.note,
+    priceCents: input.priceCents,
   });
+}
+
+/** Último preço pago numa entrada — mostrado no resumo do item. */
+export function lastPaidPrice(itemId: string): { priceCents: number; at: number } | null {
+  const row = getDatabase().getFirstSync<Row>(
+    `SELECT price_cents, created_at FROM movements
+     WHERE item_id = ? AND type = 'in' AND price_cents > 0 AND reverses_id IS NULL
+     ORDER BY created_at DESC LIMIT 1`,
+    itemId,
+  );
+
+  return row ? { priceCents: num(row.price_cents), at: num(row.created_at) } : null;
 }
 
 // ─────────────────────────────────────────────── lista de compras
@@ -1031,7 +1050,7 @@ export function listShopping(): ShoppingRow[] {
        FROM shopping_list s
        LEFT JOIN items i ON i.id = s.item_id
        WHERE s.deleted_at IS NULL
-       ORDER BY s.done_at IS NOT NULL, i.name COLLATE NOCASE, s.label COLLATE NOCASE`,
+       ORDER BY i.name COLLATE NOCASE, s.label COLLATE NOCASE, s.created_at`,
     )
     .map((row) => ({
       id: str(row.id),
