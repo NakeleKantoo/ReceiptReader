@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 import { ApiError } from './api';
 import { useAuth } from './auth';
-import { getLastSyncAt, runSync } from './sync';
+import { getLastSyncAt, runSyncShared } from './sync';
 
 export type SyncState = {
   running: boolean;
@@ -10,7 +11,12 @@ export type SyncState = {
   lastAt: number | null;
   pushed: number;
   pulled: number;
+  attempts: number;
 };
+
+/** Evita que várias telas disparem sync ao mesmo tempo quando o app volta. */
+let lastAutoSyncAt = 0;
+const RESUME_MIN_INTERVAL_MS = 60_000;
 
 export function useSync({ auto = true }: { auto?: boolean } = {}) {
   const { token } = useAuth();
@@ -21,6 +27,7 @@ export function useSync({ auto = true }: { auto?: boolean } = {}) {
     lastAt: getLastSyncAt(),
     pushed: 0,
     pulled: 0,
+    attempts: 0,
   });
 
   const runningRef = useRef(false);
@@ -29,10 +36,11 @@ export function useSync({ auto = true }: { auto?: boolean } = {}) {
     if (!token || runningRef.current) return;
 
     runningRef.current = true;
+    lastAutoSyncAt = Date.now();
     setState((current) => ({ ...current, running: true, error: null }));
 
     try {
-      const result = await runSync(token);
+      const result = await runSyncShared(token);
       setState({
         running: false,
         error: null,
@@ -40,6 +48,7 @@ export function useSync({ auto = true }: { auto?: boolean } = {}) {
         lastAt: result.at,
         pushed: result.pushed,
         pulled: result.pulled,
+        attempts: result.attempts,
       });
     } catch (error) {
       const apiError = error as ApiError;
@@ -57,6 +66,19 @@ export function useSync({ auto = true }: { auto?: boolean } = {}) {
   useEffect(() => {
     if (auto) void run();
   }, [auto, run]);
+
+  // voltar ao app é o momento natural de sincronizar
+  useEffect(() => {
+    if (!auto || !token) return;
+
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next !== 'active') return;
+      if (Date.now() - lastAutoSyncAt < RESUME_MIN_INTERVAL_MS) return;
+      void run();
+    });
+
+    return () => subscription.remove();
+  }, [auto, run, token]);
 
   return { ...state, run };
 }

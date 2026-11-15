@@ -88,6 +88,54 @@ export function serverNow(): number {
   return Date.now() - getClockSkewMs();
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Sync com retry: rede caiu no meio, servidor reiniciando, 4G fraco.
+ * Só repete o que pode melhorar na próxima tentativa — 4xx e divergência de
+ * contrato nunca melhoram sozinhos.
+ */
+export async function runSyncWithRetry(
+  token: string,
+  attempts = 3,
+): Promise<SyncResult & { attempts: number }> {
+  const delays = [1000, 3000, 7000];
+  const maxAttempts = Math.min(attempts, delays.length);
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return { ...(await runSync(token)), attempts: attempt + 1 };
+    } catch (error) {
+      lastError = error;
+
+      const apiError = error as ApiError;
+      const retryable = apiError.isOffline || (apiError.status ?? 0) >= 500;
+
+      if (!retryable || attempt === maxAttempts) break;
+      await sleep(delays[attempt] ?? 7000);
+    }
+  }
+
+  throw lastError ?? new Error('Falha ao sincronizar');
+}
+
+/**
+ * Duas telas com `useSync` não devem empurrar a mesma fila duas vezes: as
+ * chamadas concorrentes compartilham a promessa em andamento.
+ */
+let inFlight: Promise<SyncResult & { attempts: number }> | null = null;
+
+export function runSyncShared(token: string): Promise<SyncResult & { attempts: number }> {
+  if (inFlight) return inFlight;
+
+  inFlight = runSyncWithRetry(token).finally(() => {
+    inFlight = null;
+  });
+
+  return inFlight;
+}
+
 export function resetSyncCursor(): void {
   setSetting(CURSOR_KEY, JSON.stringify(emptyCursor()));
 }

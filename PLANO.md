@@ -5,7 +5,7 @@
 > etiquetas QR, contas por membro da família e histórico por unidade física.
 >
 > **Status:** plano final (v3). v1 (web) e v2 (multi-plataforma) descartadas.
-> **F0 ✅ · F1 ✅ · F2 ✅ · F3 ✅ · F4 ✅ · F5 ✅** — MVP completo (catálogo, bens, scanner, movimentações, etiquetas impressas, validade e lista de compras). F6 ✅ (empréstimo, manutenção, garantia, retirar/devolver). Próxima: F7 (deploy + APK).
+> **F0 ✅ · F1 ✅ · F2 ✅ · F3 ✅ · F4 ✅ · F5 ✅** — MVP completo (catálogo, bens, scanner, movimentações, etiquetas impressas, validade e lista de compras). F6 ✅ · F7 ✅ (empréstimo, manutenção, garantia, deploy, backup, APK). MVP fechado.
 > App e servidor negociam `PROTOCOL_VERSION` (hoje 2): versão diferente falha com mensagem clara.
 
 ---

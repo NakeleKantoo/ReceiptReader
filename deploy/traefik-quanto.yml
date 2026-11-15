@@ -1,0 +1,59 @@
+# Traefik — dynamic config do Quanto (file provider)
+#
+# No docker-compose, o serviço precisa estar na mesma rede do Traefik e com as
+# labels abaixo (ou use este arquivo e aponte o Traefik para ele):
+#
+#   providers:
+#     file:
+#       directory: /etc/traefik/dynamic
+#
+# O certificado sai do resolver "letsencrypt" definido no config estático:
+#
+#   certificatesResolvers:
+#     letsencrypt:
+#       acme:
+#         email: contato@leonnaviegas.dev.br
+#         storage: /etc/traefik/acme.json
+#         httpChallenge:
+#           entryPoint: web
+
+http:
+  routers:
+    quanto:
+      rule: Host(`quanto.leonnaviegas.dev.br`)
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - quanto-headers
+      service: quanto
+
+    quanto-http:
+      rule: Host(`quanto.leonnaviegas.dev.br`)
+      entryPoints:
+        - web
+      middlewares:
+        - redirect-https
+      service: quanto
+
+  middlewares:
+    quanto-headers:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        contentTypeNosniff: true
+        referrerPolicy: no-referrer
+        customResponseHeaders:
+          Server: ""
+
+    redirect-https:
+      redirectScheme:
+        scheme: https
+        permanent: true
+
+  services:
+    quanto:
+      loadBalancer:
+        servers:
+          - url: http://127.0.0.1:3030

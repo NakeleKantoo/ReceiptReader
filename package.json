@@ -15,7 +15,9 @@
     "android": "npm run android -w @quanto/mobile",
     "typecheck": "npm run typecheck --workspaces --if-present && npm run typecheck --prefix apps/server",
     "smoke": "npm run smoke --prefix apps/server --",
-    "migrate": "npm run migrate --prefix apps/server"
+    "migrate": "npm run migrate --prefix apps/server",
+    "backup": "npm run backup --prefix apps/server",
+    "check:deploy": "npm run check:deploy --prefix apps/server --"
   },
   "engines": {
     "node": ">=22"

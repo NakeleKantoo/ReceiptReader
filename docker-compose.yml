@@ -3,22 +3,26 @@ services:
     build:
       context: .
       dockerfile: apps/server/Dockerfile
+    image: quanto:latest
     container_name: quanto
     restart: unless-stopped
     ports:
-      # o reverse proxy (nginx/caddy) fala com 127.0.0.1:3030
-      - "3030:3030"
+      # Só o reverse proxy fala com o container. Para testar direto na rede
+      # local, rode com: QUANTO_BIND=0.0.0.0 docker compose up -d
+      - "${QUANTO_BIND:-127.0.0.1}:${PORT:-3030}:3030"
     environment:
       NODE_ENV: production
       PORT: "3030"
+      HOST: 0.0.0.0
       DATABASE_PATH: /data/quanto.db
-      PUBLIC_URL: https://quanto.leonnaviegas.dev.br
-      SESSION_TTL_DAYS: "90"
-      INVITE_TTL_HOURS: "24"
-      MAX_MEMBERS: "5"
+      PUBLIC_URL: ${PUBLIC_URL:-https://quanto.leonnaviegas.dev.br}
+      SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-90}
+      INVITE_TTL_HOURS: ${INVITE_TTL_HOURS:-24}
+      MAX_MEMBERS: ${MAX_MEMBERS:-5}
       TRUST_PROXY: "1"
+      TZ: ${TZ:-America/Sao_Paulo}
     volumes:
-      # crie antes: mkdir -p data && chown 1000:1000 data
+      # crie antes: mkdir -p data && sudo chown 1000:1000 data
       - ./data:/data
     healthcheck:
       test:
@@ -30,3 +34,10 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    security_opt:
+      - no-new-privileges:true

@@ -7,13 +7,23 @@
     "preview": {
       "distribution": "internal",
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "image": "latest"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://quanto.leonnaviegas.dev.br"
       }
     },
     "production": {
       "android": {
         "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://quanto.leonnaviegas.dev.br"
       }
     }
+  },
+  "submit": {
+    "production": {}
   }
 }

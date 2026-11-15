@@ -92,57 +92,85 @@ Quantidade é sempre inteiro na unidade base (`500 g`) e dinheiro é sempre cent
 
 ## Servidor em produção
 
+### 1. Antes de tudo: DNS e portas
+
+- registro **A** de `quanto.leonnaviegas.dev.br` apontando para o IP fixo;
+- portas **80 e 443** encaminhadas no roteador para o servidor (a 80 é do desafio do
+  Let's Encrypt, não só redirect).
+
+Sem isso o resto não fecha — e é o primeiro lugar onde o `check:deploy` acusa problema.
+
+### 2. Banco e container
+
 ```bash
+mkdir -p data && sudo chown -R 1000:1000 data   # o container roda sem root
+cp deploy/.env.example .env                     # ajuste PUBLIC_URL e QUANTO_BIND
+
 docker compose up -d --build
-docker compose logs -f quanto
+docker compose ps                               # precisa dizer (healthy)
 ```
 
-Roda como usuário **não-root** (`UID 1000`), então o banco em `./data/quanto.db` fica com o dono do
-host. Se o seu UID não for 1000:
+O container escuta em `127.0.0.1:3030` por padrão: só o reverse proxy alcança. Para testar
+direto da rede local, `QUANTO_BIND=0.0.0.0 docker compose up -d`.
+
+### 3. Reverse proxy
+
+Escolha **um**; os arquivos estão prontos em `deploy/`.
+
+| Proxy | Arquivo | Instalação |
+|---|---|---|
+| **Caddy** (recomendado) | `deploy/Caddyfile` | `sudo cp deploy/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy` |
+| nginx | `deploy/nginx-quanto.conf` | copiar para `sites-available`, linkar, `certbot --nginx -d …` |
+| Traefik | `deploy/traefik-quanto.yml` | jogar em `/etc/traefik/dynamic/` |
+
+O Caddy resolve o certificado sozinho em segundos. Os três já mandam
+`Strict-Transport-Security`, `X-Content-Type-Options` e `Referrer-Policy`.
+
+### 4. Conferir de fora
 
 ```bash
-mkdir -p data && sudo chown -R 1000:1000 data
+npm run check:deploy -- https://quanto.leonnaviegas.dev.br
 ```
 
-Backup:
+Verifica conexão TLS, se o certificado é confiável e quanto tempo falta, `/api/health`,
+`/api/public/status`, o protocolo de sync e se `/api/sync` recusa requisição sem token.
+
+### 5. Backup
 
 ```bash
-docker compose exec quanto node -e "require('better-sqlite3')('/data/quanto.db').exec(\"VACUUM INTO '/data/backup-' + Date.now() + '.db'\")"
+npm run backup                 # ./data/backups/quanto-AAAAMMDD-HHMMSS.db
+npm run backup -- --keep 30    # retenção
 ```
 
-### HTTPS (para usar fora de casa)
+Usa `VACUUM INTO` (cópia consistente mesmo com o servidor escrevendo), **valida** abrindo o
+backup e contando casas/itens/movimentações, e apaga os antigos.
 
-Com **Caddy**, três linhas (certificado automático):
+Cron diário às 3h:
 
-```caddyfile
-quanto.leonnaviegas.dev.br {
-    reverse_proxy 127.0.0.1:3030
-}
+```cron
+0 3 * * * cd /caminho/ReceiptReader && /usr/bin/node apps/server/scripts/backup.mjs --keep 30 >> /var/log/quanto-backup.log 2>&1
 ```
 
-Com **nginx**:
+**Restaurar:**
 
-```nginx
-server {
-    server_name quanto.leonnaviegas.dev.br;
-    location / {
-        proxy_pass http://127.0.0.1:3030;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
+```bash
+docker compose stop
+cp data/backups/quanto-20261115-030000.db data/quanto.db
+rm -f data/quanto.db-wal data/quanto.db-shm
+docker compose start
 ```
 
-Aí, na tela de servidor do app, use `https://quanto.leonnaviegas.dev.br`.
+Se os celulares já tinham dados e o servidor voltou vazio, use
+**Ajustes → Sincronização → Reenviar tudo deste aparelho**.
 
 ### Variáveis do servidor
 
 | Variável | Default | Para que serve |
 |---|---|---|
-| `PORT` | `3030` | porta |
-| `HOST` | `0.0.0.0` | interface (precisa ser 0.0.0.0 para o celular alcançar) |
+| `PORT` | `3030` | porta dentro do container |
+| `HOST` | `0.0.0.0` | interface |
 | `DATABASE_PATH` | `./data/quanto.db` | arquivo SQLite |
+| `PUBLIC_URL` | — | domínio público (mostrado nas mensagens) |
 | `SESSION_TTL_DAYS` | `90` | validade da sessão por aparelho |
 | `INVITE_TTL_HOURS` | `24` | validade do código de convite |
 | `MAX_MEMBERS` | `5` | limite de pessoas por casa |
@@ -157,32 +185,51 @@ DATABASE_PATH=./data/smoke.db PORT=3999 npm start &
 npm run smoke -- http://127.0.0.1:3999
 ```
 
-66 asserções: bootstrap, convite, login por PIN, unicidade do PIN, sync entre dois membros, LWW,
-tombstones, append-only das movimentações, autoria preservada/forjada, membros sincronizados sem
-hash de senha, FK inválida recusada com motivo, protocolo incompatível, isolamento por casa,
-troca de PIN, logout e rate limit.
-
 ---
 
-## App
-
-```bash
-npm run dev            # recomendado (API + Expo, com o IP certo)
-cd apps/mobile && npx expo start   # só o app
-```
-
-APK:
+## App: gerando o APK
 
 ```bash
 cd apps/mobile
+npx eas login
 npx eas build --profile preview --platform android
 ```
 
-`eas.json` define `preview` → APK e `production` → AAB. **Guarde o keystore do EAS**: trocar de
-keystore impede instalar a atualização por cima do APK antigo.
+O perfil `preview` já está configurado para **APK** (não AAB) e aponta para
+`https://quanto.leonnaviegas.dev.br`. No fim, o EAS dá um link — abra no celular e autorize a
+instalação de fonte desconhecida.
 
-O `app.json` liga `usesCleartextTraffic`, então `http://` na LAN funciona também no APK — sem isso o
-Android 9+ bloqueia e a falha parece “servidor fora do ar”.
+Build **local** (sem fila do EAS, precisa de Android SDK + JDK 17 na máquina):
+
+```bash
+npx eas build --profile preview --platform android --local
+```
+
+> **Guarde o keystore.** `npx eas credentials` mostra/baixa. Se você trocar de keystore, o Android
+> recusa instalar a atualização por cima do APK antigo — só desinstalando (e perdendo o banco local).
+
+### Primeira execução em cada aparelho
+
+```
+1. instalar o APK
+2. "Servidor da casa" → https://quanto.leonnaviegas.dev.br → Conectar
+3. primeiro aparelho: Criar a casa
+4. Ajustes → Convidar pessoa → código de 6 caracteres
+5. demais aparelhos: mesmo endereço → "Tenho um código de convite"
+```
+
+---
+
+## Sincronização (como ela se protege)
+
+- **Retry com backoff** (1s, 3s, 7s) só para falha de rede e 5xx — 4xx e divergência de contrato
+  nunca melhoram sozinhas, então não repetem.
+- **Sincroniza ao voltar para o app** (`AppState`), no máximo uma vez por minuto.
+- **Chamadas concorrentes compartilham a mesma promessa**: duas telas com `useSync` não empurram a
+  mesma fila duas vezes.
+- **Protocolo negociado**: app e servidor de versões diferentes falham com mensagem clara em vez de
+  erro de validação.
+- **Offline é estado normal**: as alterações ficam com `rev = 0` e sobem no próximo sync.
 
 ---
 
@@ -229,6 +276,7 @@ e é ele que identifica a conta:
 | **F4:** folhas de etiqueta QR (A4), prévia e PDF compartilhável | ✅ |
 | **F5:** lotes com validade, FEFO, alertas de vencimento e lista de compras | ✅ |
 | **F6:** empréstimo com prazo, manutenção e garantia; retirar/devolver em um toque | ✅ |
+| **F7:** Docker + reverse proxy prontos, backup validado, APK e endurecimento do sync | ✅ |
 
 ### F1 — catálogo
 
