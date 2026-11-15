@@ -1123,6 +1123,309 @@ export function markPurchased(row: ShoppingRow): void {
   setShoppingDone(row.id, true);
 }
 
+// ─────────────────────────────────────────────── empréstimos
+
+export type LoanRow = {
+  id: string;
+  assetId: string;
+  assetName: string;
+  itemId: string;
+  borrowerUserId: string | null;
+  borrowerName: string | null;
+  borrowerLabel: string;
+  dueOn: string | null;
+  returnedAt: number | null;
+  note: string | null;
+  createdAt: number;
+};
+
+const LOAN_SELECT = `
+  SELECT l.id, l.asset_id, l.borrower_user_id, l.borrower_name, l.due_on, l.returned_at,
+         l.note, l.created_at, u.name AS member_name,
+         a.item_id, COALESCE(a.nickname, a.serial, i.name, 'Bem') AS asset_name
+  FROM loans l
+  JOIN assets a ON a.id = l.asset_id
+  JOIN items i ON i.id = a.item_id
+  LEFT JOIN members u ON u.id = l.borrower_user_id
+  WHERE l.deleted_at IS NULL AND a.deleted_at IS NULL
+`;
+
+function toLoan(row: Row): LoanRow {
+  const borrowerName = strOrNull(row.borrower_name);
+  const memberName = strOrNull(row.member_name);
+
+  return {
+    id: str(row.id),
+    assetId: str(row.asset_id),
+    assetName: str(row.asset_name),
+    itemId: str(row.item_id),
+    borrowerUserId: strOrNull(row.borrower_user_id),
+    borrowerName,
+    borrowerLabel: memberName ?? borrowerName ?? 'alguém',
+    dueOn: strOrNull(row.due_on),
+    returnedAt: row.returned_at === null ? null : num(row.returned_at),
+    note: strOrNull(row.note),
+    createdAt: num(row.created_at),
+  };
+}
+
+export function listLoans(filter: { assetId?: string; openOnly?: boolean } = {}): LoanRow[] {
+  const conditions: string[] = [];
+  const params: string[] = [];
+
+  if (filter.assetId) {
+    conditions.push('l.asset_id = ?');
+    params.push(filter.assetId);
+  }
+  if (filter.openOnly) conditions.push('l.returned_at IS NULL');
+
+  const where = `${conditions.length ? `AND ${conditions.join(' AND ')}` : ''} ORDER BY l.created_at DESC`;
+  return getDatabase()
+    .getAllSync<Row>(`${LOAN_SELECT} ${where}`, ...params)
+    .map(toLoan);
+}
+
+export function openLoanFor(assetId: string): LoanRow | null {
+  return listLoans({ assetId, openOnly: true })[0] ?? null;
+}
+
+/** Emprestar = saída do bem + registro de para quem e até quando. */
+export function createLoan(input: {
+  assetId: string;
+  borrowerUserId?: string | null;
+  borrowerName?: string | null;
+  dueOn?: string | null;
+  note?: string | null;
+}): void {
+  const asset = getAsset(input.assetId);
+  if (!asset) throw new Error('Bem não encontrado');
+  if (openLoanFor(input.assetId)) throw new Error('Esse bem já está emprestado');
+
+  const now = serverNow();
+  const db = getDatabase();
+
+  db.withTransactionSync(() => {
+    db.runSync(
+      `INSERT INTO loans (id, household_id, asset_id, borrower_user_id, borrower_name, due_on, returned_at, note, deleted_at, created_at, updated_at, rev)
+       VALUES (?, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, ?, 0)`,
+      newId(),
+      getCurrentHousehold(),
+      input.assetId,
+      input.borrowerUserId ?? null,
+      input.borrowerName?.trim() || null,
+      input.dueOn ?? null,
+      input.note?.trim() || null,
+      now,
+      now,
+    );
+
+    insertMovement({
+      itemId: asset.itemId,
+      assetId: asset.id,
+      delta: -1,
+      type: 'checkout',
+      locationId: asset.locationId,
+      note: `emprestado para ${input.borrowerName?.trim() || 'alguém'}`,
+    });
+
+    db.runSync(
+      `UPDATE assets SET status = 'loaned', holder_user_id = ?, updated_at = ?, rev = 0 WHERE id = ?`,
+      input.borrowerUserId ?? null,
+      serverNow(),
+      asset.id,
+    );
+  });
+}
+
+export function returnLoan(loanId: string, locationId?: string | null): void {
+  const loan = listLoans().find((row) => row.id === loanId);
+  if (!loan) throw new Error('Empréstimo não encontrado');
+  if (loan.returnedAt) return;
+
+  const asset = getAsset(loan.assetId);
+  if (!asset) throw new Error('Bem não encontrado');
+
+  const db = getDatabase();
+  db.withTransactionSync(() => {
+    db.runSync(
+      'UPDATE loans SET returned_at = ?, updated_at = ?, rev = 0 WHERE id = ?',
+      serverNow(),
+      serverNow(),
+      loanId,
+    );
+
+    insertMovement({
+      itemId: asset.itemId,
+      assetId: asset.id,
+      delta: 1,
+      type: 'checkin',
+      locationId: locationId ?? asset.locationId,
+      note: 'devolvido',
+    });
+
+    db.runSync(
+      `UPDATE assets SET status = 'available', holder_user_id = NULL, updated_at = ?, rev = 0 WHERE id = ?`,
+      serverNow(),
+      asset.id,
+    );
+  });
+}
+
+export function isLoanOverdue(loan: LoanRow): boolean {
+  if (loan.returnedAt || !loan.dueOn) return false;
+  const until = daysUntil(loan.dueOn);
+  return until !== null && until < 0;
+}
+
+// ─────────────────────────────────────────────── manutenção
+
+export type MaintenanceRow = {
+  id: string;
+  assetId: string;
+  assetName: string;
+  itemId: string;
+  kind: string | null;
+  doneOn: string | null;
+  nextOn: string | null;
+  costCents: number;
+  provider: string | null;
+  notes: string | null;
+  createdAt: number;
+};
+
+const MAINTENANCE_SELECT = `
+  SELECT m.id, m.asset_id, m.kind, m.done_on, m.next_on, m.cost_cents, m.provider, m.notes,
+         m.created_at, a.item_id, COALESCE(a.nickname, a.serial, i.name, 'Bem') AS asset_name
+  FROM maintenance m
+  JOIN assets a ON a.id = m.asset_id
+  JOIN items i ON i.id = a.item_id
+  WHERE m.deleted_at IS NULL AND a.deleted_at IS NULL
+`;
+
+function toMaintenance(row: Row): MaintenanceRow {
+  return {
+    id: str(row.id),
+    assetId: str(row.asset_id),
+    assetName: str(row.asset_name),
+    itemId: str(row.item_id),
+    kind: strOrNull(row.kind),
+    doneOn: strOrNull(row.done_on),
+    nextOn: strOrNull(row.next_on),
+    costCents: num(row.cost_cents),
+    provider: strOrNull(row.provider),
+    notes: strOrNull(row.notes),
+    createdAt: num(row.created_at),
+  };
+}
+
+export function listMaintenance(assetId?: string): MaintenanceRow[] {
+  const rows = assetId
+    ? getDatabase().getAllSync<Row>(`${MAINTENANCE_SELECT} AND m.asset_id = ? ORDER BY m.done_on DESC, m.created_at DESC`, assetId)
+    : getDatabase().getAllSync<Row>(`${MAINTENANCE_SELECT} ORDER BY m.done_on DESC, m.created_at DESC`);
+
+  return rows.map(toMaintenance);
+}
+
+export function createMaintenance(input: {
+  assetId: string;
+  kind?: string | null;
+  doneOn?: string | null;
+  nextOn?: string | null;
+  costCents?: number;
+  provider?: string | null;
+  notes?: string | null;
+}): void {
+  const asset = getAsset(input.assetId);
+  if (!asset) throw new Error('Bem não encontrado');
+
+  const now = serverNow();
+  const db = getDatabase();
+
+  db.withTransactionSync(() => {
+    db.runSync(
+      `INSERT INTO maintenance (id, household_id, asset_id, kind, done_on, next_on, cost_cents, provider, notes, user_id, deleted_at, created_at, updated_at, rev)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, 0)`,
+      newId(),
+      getCurrentHousehold(),
+      input.assetId,
+      input.kind?.trim() || null,
+      input.doneOn ?? todayIso(),
+      input.nextOn ?? null,
+      input.costCents ?? 0,
+      input.provider?.trim() || null,
+      input.notes?.trim() || null,
+      getCurrentUser(),
+      now,
+      now,
+    );
+
+    insertMovement({
+      itemId: asset.itemId,
+      assetId: asset.id,
+      delta: 0,
+      type: 'maintenance',
+      locationId: asset.locationId,
+      note: input.kind?.trim() || 'manutenção',
+    });
+  });
+}
+
+export function deleteMaintenance(id: string): void {
+  const now = serverNow();
+  getDatabase().runSync(
+    'UPDATE maintenance SET deleted_at = ?, updated_at = ?, rev = 0 WHERE id = ?',
+    now,
+    now,
+    id,
+  );
+}
+
+/** Próxima manutenção de cada bem, dentro da janela. */
+export function maintenanceDue(days = 30): MaintenanceRow[] {
+  const byAsset = new Map<string, MaintenanceRow>();
+
+  for (const row of listMaintenance()) {
+    if (!row.nextOn) continue;
+    const until = daysUntil(row.nextOn);
+    if (until === null || until > days) continue;
+
+    const current = byAsset.get(row.assetId);
+    if (!current || (current.nextOn ?? '9999') > row.nextOn) byAsset.set(row.assetId, row);
+  }
+
+  return [...byAsset.values()].sort((a, b) => (a.nextOn ?? '').localeCompare(b.nextOn ?? ''));
+}
+
+/** Bens com garantia vencendo (ou vencida) na janela. */
+export function warrantyAlerts(days = 30): (Asset & { itemName: string })[] {
+  const names = new Map(listItems().map((item) => [item.id, item.name]));
+
+  return listAssets()
+    .filter((asset) => {
+      if (!asset.warrantyUntil) return false;
+      if (asset.status === 'disposed') return false;
+      const until = daysUntil(asset.warrantyUntil);
+      return until !== null && until <= days;
+    })
+    .map((asset) => ({ ...asset, itemName: names.get(asset.itemId) ?? '' }))
+    .sort((a, b) => (a.warrantyUntil ?? '').localeCompare(b.warrantyUntil ?? ''));
+}
+
+/** Quem está com o bem agora (nome legível). */
+export function assetHolderLabel(asset: Asset): string | null {
+  if (asset.status === 'available' || asset.status === 'disposed') return null;
+
+  const loan = openLoanFor(asset.id);
+  if (loan) return loan.borrowerLabel;
+
+  if (asset.holderUserId) {
+    const member = listMembers().find((row) => row.id === asset.holderUserId);
+    return member?.name ?? 'alguém';
+  }
+
+  return asset.status === 'maintenance' ? 'em manutenção' : 'em uso';
+}
+
 // ─────────────────────────────────────────────── contadores
 
 // ─────────────────────────────────────────────── busca por código (scanner)

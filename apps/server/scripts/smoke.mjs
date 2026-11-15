@@ -397,6 +397,58 @@ const run = async () => {
     pantryPull.body?.changes?.shopping_list,
   );
 
+  console.log('\nF6: empréstimo e manutenção');
+  const loanId = crypto.randomUUID();
+  const maintenanceId = crypto.randomUUID();
+  const carePush = await api('/api/sync', {
+    method: 'POST',
+    token: adminToken,
+    body: syncBody({
+      loans: [
+        {
+          id: loanId,
+          asset_id: assetId,
+          borrower_name: 'Vizinho',
+          due_on: '2026-12-20',
+          created_at: now,
+          updated_at: now,
+        },
+      ],
+      maintenance: [
+        {
+          id: maintenanceId,
+          asset_id: assetId,
+          kind: 'troca de escova',
+          done_on: '2026-11-01',
+          next_on: '2027-05-01',
+          cost_cents: 4500,
+          provider: 'oficina do bairro',
+          created_at: now,
+          updated_at: now,
+        },
+      ],
+    }),
+  });
+  check('empréstimo e manutenção aceitos', carePush.body?.rejected?.length === 0, carePush.body?.rejected);
+
+  const carePull = await api('/api/sync', {
+    method: 'POST',
+    token: memberToken,
+    body: syncBody(),
+  });
+  check(
+    'empréstimo sincroniza com prazo e devedor',
+    carePull.body?.changes?.loans?.find((row) => row.id === loanId)?.borrower_name === 'Vizinho' &&
+      carePull.body?.changes?.loans?.find((row) => row.id === loanId)?.due_on === '2026-12-20',
+    carePull.body?.changes?.loans,
+  );
+  const syncedMaintenance = carePull.body?.changes?.maintenance?.find((row) => row.id === maintenanceId);
+  check(
+    'manutenção sincroniza com custo e próxima data',
+    syncedMaintenance?.cost_cents === 4500 && syncedMaintenance?.next_on === '2027-05-01',
+    syncedMaintenance,
+  );
+
   console.log('\nF3: pessoas e autoria');
   const membersPull = await api('/api/sync', {
     method: 'POST',

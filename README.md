@@ -157,7 +157,7 @@ DATABASE_PATH=./data/smoke.db PORT=3999 npm start &
 npm run smoke -- http://127.0.0.1:3999
 ```
 
-63 asserções: bootstrap, convite, login por PIN, unicidade do PIN, sync entre dois membros, LWW,
+66 asserções: bootstrap, convite, login por PIN, unicidade do PIN, sync entre dois membros, LWW,
 tombstones, append-only das movimentações, autoria preservada/forjada, membros sincronizados sem
 hash de senha, FK inválida recusada com motivo, protocolo incompatível, isolamento por casa,
 troca de PIN, logout e rate limit.
@@ -217,7 +217,7 @@ e é ele que identifica a conta:
 | Item | Estado |
 |---|---|
 | Monorepo, `packages/core` com DDL + contratos + unidades/dinheiro | ✅ |
-| API: auth por PIN, convite, membros, rate limit, sync | ✅ 39 asserções |
+| API: auth por PIN, convite, membros, rate limit, sync | ✅ 66 asserções |
 | Tela inicial de servidor (self-hosted), com teste de conexão | ✅ |
 | App: criar casa, entrar com convite, biometria, tema claro/escuro | ✅ |
 | App: locais em árvore, criar/apagar offline, badge de “não sincronizado” | ✅ |
@@ -228,6 +228,7 @@ e é ele que identifica a conta:
 | **F3:** movimentações, saldo derivado, histórico por item/bem e desfazer | ✅ |
 | **F4:** folhas de etiqueta QR (A4), prévia e PDF compartilhável | ✅ |
 | **F5:** lotes com validade, FEFO, alertas de vencimento e lista de compras | ✅ |
+| **F6:** empréstimo com prazo, manutenção e garantia; retirar/devolver em um toque | ✅ |
 
 ### F1 — catálogo
 
@@ -310,6 +311,21 @@ validado contra `members` e, se inválido, vira quem sincronizou.
 Lógica de datas (`daysUntil`, `expiryTone`, `expiryLabel`) fica em `@quanto/core` e é testada:
 vencido, vence hoje, vence em N dias, futuro e sem validade. O FEFO foi verificado com dois lotes
 (vence antes zerado primeiro, total preservado).
+
+### F6 — ferramentas: empréstimo, manutenção, garantia
+
+- **Retirar / devolver** (ação na home): uma tela só, duas seções — "Fora / em uso" (com quem e até
+  quando) e "Disponíveis". Um toque resolve; sem formulário.
+- **Emprestar para fora**: na tela do bem, escolha a pessoa da casa (ou digite um nome de fora) e a
+  data de devolução. O empréstimo vira `checkout` no histórico, muda `status` para `loaned` e grava
+  para quem foi. "Devolvido" fecha o empréstimo e devolve o bem.
+- **Manutenção**: registro com o que foi feito, data, custo, quem fez e a **próxima data**. Cada
+  registro entra no histórico do bem como um evento.
+- **Garantia**: data na tela do bem, com selo quando está vencendo (≤ 30 dias).
+- **Prazos na home**: empréstimo atrasado em vermelho, devolução nos próximos 7 dias em amarelo,
+  garantia e manutenção vencendo — cada linha abre o bem.
+
+`loans` e `maintenance` já existiam no schema desde a F0; a F6 não precisou de migração.
 
 ### Checklist de aceite da F0 (manual)
 

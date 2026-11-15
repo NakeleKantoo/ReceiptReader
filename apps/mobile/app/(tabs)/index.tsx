@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { expiryLabel, expiryTone, formatQty, formatBRL } from '@quanto/core';
+import { daysUntil, expiryLabel, expiryTone, formatQty, formatBRL } from '@quanto/core';
 import { useAuth } from '@/lib/auth';
 import { useSync } from '@/lib/useSync';
 import { useFocusReload } from '@/lib/useFocusReload';
@@ -11,9 +11,16 @@ import {
   countRows,
   countTotalValueCents,
   expiringLots,
-  lowStockItems,
+  isLoanOverdue,
+  listAssets,
+  listLoans,
   listShopping,
+  lowStockItems,
+  maintenanceDue,
+  warrantyAlerts,
+  type LoanRow,
   type LotRow,
+  type MaintenanceRow,
 } from '@/db/repo';
 import { displayDate } from '@/lib/format';
 import { greeting, relativeTime } from '@/lib/format';
@@ -86,6 +93,10 @@ export default function DashboardScreen() {
   const [lowStock, setLowStock] = useState<{ id: string; name: string }[]>([]);
   const [expiring, setExpiring] = useState<LotRow[]>([]);
   const [shoppingCount, setShoppingCount] = useState(0);
+  const [loans, setLoans] = useState<LoanRow[]>([]);
+  const [outCount, setOutCount] = useState(0);
+  const [warranties, setWarranties] = useState<{ id: string; assetId: string; name: string; date: string | null }[]>([]);
+  const [maintenance, setMaintenance] = useState<MaintenanceRow[]>([]);
   const [counts, setCounts] = useState<Counts>({
     locations: 0,
     categories: 0,
@@ -107,6 +118,19 @@ export default function DashboardScreen() {
     setLowStock(lowStockItems().map((item) => ({ id: item.id, name: item.name })));
     setExpiring(expiringLots(7));
     setShoppingCount(listShopping().filter((row) => row.doneAt === null).length);
+    setLoans(listLoans({ openOnly: true }));
+    setOutCount(
+      listAssets().filter((asset) => asset.status === 'in_use' || asset.status === 'loaned').length,
+    );
+    setWarranties(
+      warrantyAlerts(30).map((asset) => ({
+        id: asset.id,
+        assetId: asset.id,
+        name: asset.nickname || asset.serial || asset.itemName,
+        date: asset.warrantyUntil,
+      })),
+    );
+    setMaintenance(maintenanceDue(30));
   }, []);
 
   useFocusReload(reload);
@@ -114,6 +138,9 @@ export default function DashboardScreen() {
 
   const session = state.status === 'authenticated' ? state.session : null;
   if (!session) return null;
+
+  const overdueLoans = loans.filter(isLoanOverdue);
+  const dueLoans = loans.filter((loan) => !isLoanOverdue(loan) && loan.dueOn && (daysUntil(loan.dueOn) ?? 99) <= 7);
 
   const stats = [
     { label: 'itens', value: counts.items },
@@ -153,27 +180,37 @@ export default function DashboardScreen() {
           onPress={() => router.push('/pick-item?type=in')}
         />
         <ActionTile
+          icon="swap-horizontal-outline"
+          title="Retirar / devolver"
+          subtitle={outCount > 0 ? `${outCount} fora do lugar` : 'tudo guardado'}
+          onPress={() => router.push('/asset-actions')}
+        />
+        <ActionTile
           icon="cart-outline"
           title="Lista de compras"
-          subtitle={
-            shoppingCount > 0 ? `${shoppingCount} para comprar` : 'nada faltando agora'
-          }
+          subtitle={shoppingCount > 0 ? `${shoppingCount} para comprar` : 'nada faltando agora'}
           onPress={() => router.push('/shopping')}
+        />
+        <ActionTile
+          icon="qr-code-outline"
+          title="Etiquetas QR"
+          subtitle="imprimir folha A4"
+          onPress={() => router.push('/print')}
         />
       </View>
 
       <View style={{ flexDirection: 'row', gap: spacing.sm }}>
         <Button
-          title="Etiquetas QR"
-          variant="secondary"
-          style={{ flex: 1 }}
-          onPress={() => router.push('/print')}
-        />
-        <Button
           title="Novo item"
           variant="secondary"
           style={{ flex: 1 }}
           onPress={() => router.push('/item-form')}
+        />
+        <Button
+          title="Categorias"
+          variant="secondary"
+          style={{ flex: 1 }}
+          onPress={() => router.push('/categories')}
         />
       </View>
 
@@ -197,6 +234,77 @@ export default function DashboardScreen() {
           </View>
         ))}
       </View>
+
+      {overdueLoans.length + dueLoans.length + warranties.length + maintenance.length > 0 ? (
+        <Card>
+          <SectionTitle>Prazos</SectionTitle>
+
+          {overdueLoans.map((loan) => (
+            <Pressable
+              key={loan.id}
+              onPress={() => router.push(`/asset-form?id=${loan.assetId}`)}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 6 }}
+            >
+              <Ionicons name="alert-circle" size={16} color={palette.danger} />
+              <View style={{ flex: 1 }}>
+                <AppText numberOfLines={1}>{loan.assetName}</AppText>
+                <AppText variant="caption" color={palette.danger}>
+                  com {loan.borrowerLabel} · devolução atrasada há{' '}
+                  {Math.abs(daysUntil(loan.dueOn) ?? 0)}d
+                </AppText>
+              </View>
+            </Pressable>
+          ))}
+
+          {dueLoans.map((loan) => (
+            <Pressable
+              key={loan.id}
+              onPress={() => router.push(`/asset-form?id=${loan.assetId}`)}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 6 }}
+            >
+              <Ionicons name="time-outline" size={16} color={palette.warning} />
+              <View style={{ flex: 1 }}>
+                <AppText numberOfLines={1}>{loan.assetName}</AppText>
+                <AppText variant="caption">
+                  com {loan.borrowerLabel} · devolver em {daysUntil(loan.dueOn)}d
+                </AppText>
+              </View>
+            </Pressable>
+          ))}
+
+          {warranties.slice(0, 3).map((asset) => (
+            <Pressable
+              key={`w-${asset.id}`}
+              onPress={() => router.push(`/asset-form?id=${asset.assetId}`)}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 6 }}
+            >
+              <Ionicons name="shield-outline" size={16} color={palette.textMuted} />
+              <View style={{ flex: 1 }}>
+                <AppText numberOfLines={1}>{asset.name}</AppText>
+                <AppText variant="caption">
+                  garantia {expiryLabel(asset.date)} · {displayDate(asset.date)}
+                </AppText>
+              </View>
+            </Pressable>
+          ))}
+
+          {maintenance.slice(0, 3).map((row) => (
+            <Pressable
+              key={`m-${row.id}`}
+              onPress={() => router.push(`/asset-form?id=${row.assetId}`)}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 6 }}
+            >
+              <Ionicons name="build-outline" size={16} color={palette.textMuted} />
+              <View style={{ flex: 1 }}>
+                <AppText numberOfLines={1}>{row.assetName}</AppText>
+                <AppText variant="caption">
+                  {row.kind || 'manutenção'} · {expiryLabel(row.nextOn)}
+                </AppText>
+              </View>
+            </Pressable>
+          ))}
+        </Card>
+      ) : null}
 
       {expiring.length > 0 ? (
         <Card>
