@@ -16,6 +16,10 @@ data/*
 apps/mobile/android/
 apps/mobile/ios/
 
+# assinatura e artefatos do app
+apps/mobile/credentials/
+apps/mobile/dist/
+
 # build do eas
 *.apk
 *.aab

@@ -1,7 +1,7 @@
 import express from 'express';
 import type { NextFunction, Request, Response } from 'express';
 import type { DB } from './db/index.ts';
-import { env, isProd } from './env.ts';
+import { env, isProd, trustProxySetting } from './env.ts';
 import { errorHandler } from './lib/errors.ts';
 import { createAuthMiddleware } from './middleware/auth.ts';
 import { authRoutes } from './routes/auth.ts';
@@ -14,7 +14,7 @@ const SESSION_TTL_MS = env.SESSION_TTL_DAYS * 24 * 60 * 60 * 1000;
 export function createApp(db: DB) {
   const app = express();
 
-  app.set('trust proxy', env.TRUST_PROXY ? 1 : false);
+  app.set('trust proxy', trustProxySetting());
   app.disable('x-powered-by');
   app.use(express.json({ limit: '2mb' }));
 

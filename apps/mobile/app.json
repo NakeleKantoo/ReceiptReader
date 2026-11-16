@@ -16,7 +16,6 @@
     "android": {
       "package": "dev.leonnaviegas.quanto",
       "versionCode": 1,
-      "edgeToEdgeEnabled": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundColor": "#0F4C4C",
@@ -26,6 +25,10 @@
         "android.permission.USE_BIOMETRIC",
         "android.permission.CAMERA",
         "android.permission.VIBRATE"
+      ],
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "plugins": [
@@ -53,8 +56,14 @@
           "barcodeScannerEnabled": true
         }
       ],
-      "expo-audio",
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-audio",
+        {
+          "recordAudioAndroid": false,
+          "enableBackgroundPlayback": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": false

@@ -113,18 +113,22 @@ docker compose ps                               # precisa dizer (healthy)
 O container escuta em `127.0.0.1:3030` por padrão: só o reverse proxy alcança. Para testar
 direto da rede local, `QUANTO_BIND=0.0.0.0 docker compose up -d`.
 
-### 3. Reverse proxy
+### 3. Reverse proxy — o seu, do seu jeito
 
-Escolha **um**; os arquivos estão prontos em `deploy/`.
+O Quanto **não assume** qual proxy você usa. O que ele precisa garantir está em
+[`deploy/README.md`](./deploy/README.md): encaminhar para `127.0.0.1:3030`, preservar `Host`,
+mandar `X-Forwarded-For`/`X-Forwarded-Proto`, não remover `Authorization`, aceitar corpo de 4 MB e
+timeout de 60 s. Lá também tem exemplos (Apache httpd, nginx, Caddy, Traefik) **como apêndice** —
+adapte, não copie.
 
-| Proxy | Arquivo | Instalação |
-|---|---|---|
-| **Caddy** (recomendado) | `deploy/Caddyfile` | `sudo cp deploy/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy` |
-| nginx | `deploy/nginx-quanto.conf` | copiar para `sites-available`, linkar, `certbot --nginx -d …` |
-| Traefik | `deploy/traefik-quanto.yml` | jogar em `/etc/traefik/dynamic/` |
+Ajuste o `TRUST_PROXY` ao seu cenário (é o que faz o rate limit ver o IP real):
 
-O Caddy resolve o certificado sozinho em segundos. Os três já mandam
-`Strict-Transport-Security`, `X-Content-Type-Options` e `Referrer-Policy`.
+```bash
+TRUST_PROXY=1                      # proxy na mesma máquina (padrão)
+TRUST_PROXY=2                      # CDN na frente do proxy
+TRUST_PROXY=127.0.0.1,10.0.0.0/8   # só nessas subredes
+TRUST_PROXY=false                  # exposto direto, sem proxy
+```
 
 ### 4. Conferir de fora
 
@@ -187,26 +191,53 @@ npm run smoke -- http://127.0.0.1:3999
 
 ---
 
-## App: gerando o APK
+## App: gerando o APK (local, sem nuvem)
+
+O build é **Gradle local**: nada de EAS cloud, nada de conta Expo.
 
 ```bash
-cd apps/mobile
-npx eas login
-npx eas build --profile preview --platform android
+npm run build:apk              # incremental
+npm run build:apk:clean        # regenera android/ do zero
 ```
 
-O perfil `preview` já está configurado para **APK** (não AAB) e aponta para
-`https://quanto.leonnaviegas.dev.br`. No fim, o EAS dá um link — abra no celular e autorize a
-instalação de fonte desconhecida.
+O script faz tudo: confere JDK 17 e Android SDK, gera (na primeira vez) um **keystore de release**
+estável, roda `expo prebuild`, configura a assinatura de release no `build.gradle` (o template do
+Expo assina release com a chave de debug, o que impede atualizar o APK depois), compila para
+`arm64-v8a` e copia o resultado para `apps/mobile/dist/`:
 
-Build **local** (sem fila do EAS, precisa de Android SDK + JDK 17 na máquina):
+```
+✓ APK pronto
+  apps/mobile/dist/quanto-1.0.0.apk
+  42.9 MB · versão 1.0.0 · pacote dev.leonnaviegas.quanto
+  sha256 fb10d646…
+```
+
+Pré-requisitos: **JDK 17** (`sudo apt install openjdk-17-jdk`) e **Android SDK** com
+`platforms;android-36` e `build-tools;36.0.0` (`ANDROID_HOME` exportado).
+
+Ajustes úteis:
+
+| Variável | Efeito |
+|---|---|
+| `ABI=arm64-v8a,armeabi-v7a` | APK universal (dobra o tamanho; arm64 cobre quase todo celular) |
+| `--clean` | apaga `android/` e regenera |
+| `--no-prebuild` | recompila sem passar pelo prebuild |
+
+Instalar:
 
 ```bash
-npx eas build --profile preview --platform android --local
+adb install -r apps/mobile/dist/quanto-1.0.0.apk
+# ou copie o APK para o celular e abra (autorize "instalar de fontes desconhecidas")
 ```
 
-> **Guarde o keystore.** `npx eas credentials` mostra/baixa. Se você trocar de keystore, o Android
-> recusa instalar a atualização por cima do APK antigo — só desinstalando (e perdendo o banco local).
+> **Guarde `apps/mobile/credentials/`** (`release.keystore` + `keystore.properties`, ambos fora do
+> git). Sem esses arquivos você até builda outro APK, mas o Android recusa instalar por cima —
+> só desinstalando, e aí o banco local do aparelho vai junto.
+
+### Alternativa: EAS cloud (opcional)
+
+Se algum dia você quiser a nuvem da Expo, o `eas.json` já tem o perfil `preview` gerando APK:
+`npx eas build --profile preview --platform android`. Não é necessário para nada do resto.
 
 ### Primeira execução em cada aparelho
 
@@ -276,7 +307,7 @@ e é ele que identifica a conta:
 | **F4:** folhas de etiqueta QR (A4), prévia e PDF compartilhável | ✅ |
 | **F5:** lotes com validade, FEFO, alertas de vencimento e lista de compras | ✅ |
 | **F6:** empréstimo com prazo, manutenção e garantia; retirar/devolver em um toque | ✅ |
-| **F7:** Docker + reverse proxy prontos, backup validado, APK e endurecimento do sync | ✅ |
+| **F7:** Docker, deploy agnóstico, backup validado, APK local assinado e sync endurecido | ✅ |
 
 ### F1 — catálogo
 

@@ -17,7 +17,9 @@
     "smoke": "npm run smoke --prefix apps/server --",
     "migrate": "npm run migrate --prefix apps/server",
     "backup": "npm run backup --prefix apps/server",
-    "check:deploy": "npm run check:deploy --prefix apps/server --"
+    "check:deploy": "npm run check:deploy --prefix apps/server --",
+    "build:apk": "npm run build:apk -w @quanto/mobile",
+    "build:apk:clean": "npm run build:apk:clean -w @quanto/mobile"
   },
   "engines": {
     "node": ">=22"
